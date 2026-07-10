@@ -1,11 +1,16 @@
 from abc import ABC, abstractmethod
+from ase import Atoms
 from datetime import datetime
 from random import randrange, seed
+from glob import glob
+from os.path import basename, join, isdir, isfile
+import shutil
+from typing import Any, Callable, Optional, Union
+from ..storage import Storage
+from ..workflow import Workflow
 from ..workflow.factory import workflow_builder
 from ..utils.recorder import Recorder
-from ..utils.exceptions import UnidentifiedPathError, UnidentifiedStorageError
 from ..utils.input_output import ase_glob_read
-from ..utils.isinstance import isinstance_no_import
 
 
 class Simulator(Recorder, ABC):
@@ -20,97 +25,102 @@ class Simulator(Recorder, ABC):
     the energy of the system, forces on each atom, and/or the stress on the
     cell, amongst others.
 
-    :param simulator_args: dictionary of parameters to instantiate the
-        Simulator, such as code_path (executable to use), elements (list of
-        elements present in the simulation), and input_template (the path to an
-        input template to build from)
-    :type simulator_args: dict
+    :param input_template: path to an input template to build from
+    :param kwargs: additional keyword arguments for extensibility
     """
 
-    def __init__(self, simulator_args):
+    def __init__(
+        self,
+        input_template: Optional[str] = None,
+        **kwargs: Any,
+    ) -> None:
         """
-        Abstract base class to manage and run simulations (exploration)
+        Abstract base class to manage and run simulations
 
-        :param simulator_args: dictionary of parameters to instantiate the
-            Simulator, such as code_path (executable to use), elements (list of
-            elements present in the simulation), and input_template (the path
-            to an input template to build from)
-        :type simulator_args: dict
+        :param input_template: path to an input template to build from
+        :param kwargs: additional keyword arguments for extensibility
         """
         super().__init__()
-        self.simulator_args = simulator_args
+
+        if input_template is None:
+            self.logger.info('No input_template set, one must be provided to '
+                             'simulator.run()')
+        self.input_template = input_template
+
         #: default workflow to use within the Simulator class
         self.default_wf = workflow_builder.build(
             'LOCAL',
             {'root_directory': './simulator'},
         )
         # this flag should be set to True externally
-        self.external_setup = False
+        self.external_setup: bool = False
         # if external_setup is set to True, then external_func needs to be set
         # as a function
-        self.external_func = None
-
-    def get_init_configs_from_path(self,
-                                   config_path,
-                                   file_ext='.xyz',
-                                   file_format='extxyz'):
-        """
-        get the initial configuration for the simulator input from path
-
-        This function loads the configurations present in the ``config_path``
-        and all of its sub-directories into a list of ASE Atoms, which is
-        returned. Assumes files are stored in the extended xyz format. This
-        function should only be used if configurations cannot be added to
-        Storage.
-
-        :param config_path: path of the root directory where configuration
-            files are stored (extended xyz format)
-        :type config_path: str
-        :param file_ext: the file extension. Default is '.xyz'
-        :type file_ext: str
-        :param file_ext: the file format. Default is 'extxyz'
-        :type file_ext: str
-        :returns: dataset as list of Atoms objects
-        :rtype: list
-        """
-        return ase_glob_read(config_path, file_ext, file_format)
+        self.external_func: Optional[Callable] = None
 
     def run(
         self,
-        path_type,
-        model_path,
-        input_args,
-        init_config_args,
-        workflow=None,
-        job_details=None,
-    ):
+        path_type: str,
+        simulation_files: Union[str, list[str], None],
+        template_fill: dict[str, Any],
+        make_config_path: Optional[str] = None,
+        make_config_storage: Optional[Storage] = None,
+        make_config_handle: Optional[str] = None,
+        make_config_atoms: Optional[Union[Atoms, list[Atoms]]] = None,
+        make_config_seed: Optional[int] = None,
+        input_template: Optional[str] = None,
+        workflow: Optional[Workflow] = None,
+        job_details: Optional[dict[str, Any]] = None,
+    ) -> int:
         """
-        setup and execute a Simulator calculation
+        Setup and execute a Simulator calculation
 
         Prepare input file and initial configuration. Execute the code (run
-        simulation), returning the ``job_id`` for tracking purposes
+        simulation), returning the ``calc_id`` for tracking purposes. If none
+        of `make_config_path`, `make_config_storage`, or `make_config_atoms`
+        are set, then the template should construct the simulation box.
 
         :param path_type: specifier for the workflow path, to differentiate
             calculation types
         :type path_type: str
-        :param model_path: path where the potential file(s) is stored
-        :type model_path: str
-        :param input_args: input arguments to fill out the input template file
-        :type input_args: dict
-        :param init_config_args: dictionary containing information to specify
-            how the configuration should be setup for the run. Key:value pairs
-            are 'make_config': boolean if run() should create the initial
-            configuration [if false, the other keys are not needed],
-            'config_handle': identifier to retrieve the configuration,
-            'storage': storage module for configuration options to be retrieved
-            from. Alternatively, set to 'path' if config_handle is a path where
-            configs should be read from,
-            'random_seed': if selecting the configuration from a set, an int
-            random seed can be specified to enable reproducability
-        :type init_config_args: dict
-        :param workflow: the workflow for managing job submission, if none are
-            supplied, will use the default workflow defined in this class
-            |default| ``None``
+        :param simulation_files: files or directories that are necessary for
+            the simulation to run
+        :type simulation_files: str or list[str]
+        :param template_fill: values to fill out the input template file,
+            passed to :meth:`_write_input`
+        :type template_fill: dict
+        :param make_config_path: if a separate configuration/structure file
+            should be written based on structures read from disk at the path.
+            Will be read with :meth:`_get_init_configs_from_path`. Cannot be
+            used with `make_config_storage` or `make_config_atoms`. If the path
+            contains multiple configurations, the first config will be used,
+            unless `make_config_seed` is also set, in which case a random
+            structure will be chosen with that seed.
+        :type make_config_path: str
+        :param make_config_storage: if a separate configuration/structure file
+            should be written based on structures read from storage.
+            `make_config_handle` must also be provided. Cannot be used with
+            `make_config_path` or `make_config_atoms`. If the dataset contains
+            multiple configurations, the first config will be used, unless
+            `make_config_seed` is also set, in which case a random structure
+            will be chosen with that seed.
+        :type make_config_storage: Storage
+        :param make_config_handle: Used with `make_config_storage` to specify
+            the dataset that the initial structure should be taken from
+        :type make_config_handle: str
+        :param make_config_atoms: list of Atoms passed in memory to select
+            from for generating the inital configuration
+        :type make_config_atoms: Atoms or list of Atoms
+        :param make_config_seed: random seed to use to select an initial
+            configuration from a list. If not used, the first configuration
+            will be selected.
+        :type make_config_seed: int
+        :param input_template: input template to use (overriding the default
+            possibly set at instantiation). Will raise a RuntimeError if
+            neither are set.
+        :type input_template: str
+        :param workflow: the workflow for managing job submission. If None,
+            uses default workflow |default| ``None``
         :type workflow: Workflow
         :param job_details: dict that includes any additional parameters for
             running the job (passed to
@@ -120,6 +130,46 @@ class Simulator(Recorder, ABC):
         :returns: calculation ID
         :rtype: int
         """
+        # validate input
+        if input_template is None:
+            if self.input_template is None:
+                raise RuntimeError('input_template must be set at '
+                                   'Simulator construction or .run()')
+            else:
+                input_template = self.input_template
+        self.logger.info(f'Using input template: {input_template}')
+
+        structure_pool = []
+        if make_config_path is not None:
+            if (make_config_storage is not None
+                    or make_config_atoms is not None):
+                raise ValueError('Only one of make_config_path, '
+                                 'make_config_storage or make_config_atoms '
+                                 'can be used at a time')
+            # read from file
+            structure_pool = self._get_init_configs_from_path(make_config_path)
+        elif make_config_storage is not None:
+            if make_config_path is not None or make_config_atoms is not None:
+                raise ValueError('Only one of make_config_path, '
+                                 'make_config_storage or make_config_atoms '
+                                 'can be used at a time')
+            # read from storage
+            structure_pool = make_config_storage.get_data(make_config_handle)
+        elif make_config_atoms is not None:
+            if make_config_path is not None or make_config_storage is not None:
+                raise ValueError('Only one of make_config_path, '
+                                 'make_config_storage or make_config_atoms '
+                                 'can be used at a time')
+            # read from memory
+            if isinstance(make_config_atoms, Atoms):
+                structure_pool = [make_config_atoms]
+            elif (isinstance(make_config_atoms, list)
+                  and isinstance(make_config_atoms[0], Atoms)):
+                structure_pool = make_config_atoms
+            else:
+                raise ValueError('make_config_atoms must either be Atoms or a '
+                                 'list of Atoms')
+
         module_name = self.__class__.__name__
         if workflow is None:
             workflow = self.default_wf
@@ -127,54 +177,44 @@ class Simulator(Recorder, ABC):
             job_details = {}
         run_path = workflow.make_path(module_name, path_type)
 
-        self.load_potential(run_path, model_path)
+        self._load_simulation_files(run_path, simulation_files)
 
-        make_config = init_config_args.get('make_config', True)
-        if make_config:
-            self.logger.info(f'{module_name} is creating the configuration')
-            config_handle = init_config_args.get('config_handle')
-            storage = init_config_args.get('storage')
-            random_seed = init_config_args.get('random_seed')
-            if storage == 'path':
-                self.logger.info('Reading configurations from path, consider '
-                                 'using Storage instead')
-                init_configs = self.get_init_configs_from_path(config_handle)
-            elif isinstance_no_import(storage, 'Storage'):
+        if len(structure_pool) > 0:
+            self.logger.info(f'{module_name} is creating the configuration(s)')
+            if make_config_seed is not None:
                 self.logger.info(
-                    f'Reading configurations from dataset {config_handle} in '
-                    f'database {storage.database_name} from '
-                    f'{storage.__class__.__name__}')
-                init_configs = storage.get_data(config_handle)
-            else:
-                raise UnidentifiedStorageError(
-                    f'Simulator cannot use {storage}')
-
-            if random_seed is not None:
-                self.logger.info(
-                    f'Initializing random seed with seed: {random_seed}')
-                seed(random_seed)
-            ind = randrange(0, len(init_configs))
+                    f'Initializing random seed with seed: {make_config_seed}')
+                seed(make_config_seed)
+            ind = randrange(0, len(structure_pool))
             self.logger.info(f'Using random index: {ind}')
-            self.write_initial_config(run_path, init_configs[ind])
+            self._write_initial_config(run_path, structure_pool[ind])
+        else:
+            self.logger.info('Structure not generated, it should be set by '
+                             ' the input template')
 
         input_file_name = job_details.get('input_file_name')
-        self.write_input(run_path, input_args, input_file_name)
+        self._write_input(
+            run_path,
+            input_template,
+            template_fill,
+            input_file_name,
+        )
 
         if self.external_setup:
             self._external_calculation_setup(run_path)
 
-        simulator_command = self.get_run_command(job_details)
+        simulator_command = self._get_run_command(job_details)
         calc_id = workflow.submit_job(simulator_command, run_path, job_details)
 
         return calc_id
 
     def save_configurations(
         self,
-        path_ids,
-        storage,
-        dataset_handle=None,
-        workflow=None,
-    ):
+        path_ids: Union[list[Union[int, str]], Union[int, str]],
+        storage: Storage,
+        dataset_handle: Optional[str] = None,
+        workflow: Optional[Any] = None,
+    ) -> str:
         """
         save the configurations associated with path_ids to storage
 
@@ -200,29 +240,19 @@ class Simulator(Recorder, ABC):
         """
         if not isinstance(path_ids, list):
             path_ids = [path_ids]
-        data_paths = []
-        for path_id in path_ids:
-            if isinstance(path_id, int):
-                self.logger.info(
-                    'Supplied path ID is calc ID, extracting paths')
-                if workflow is None:
-                    workflow = self.default_wf
-                calc_path = workflow.get_job_status(path_id).path
-                data_paths.append(calc_path)
-            elif '/' in path_id or '.' in path_id:
-                self.logger.info('Reading explicit paths for parsing output')
-                calc_path = path_id
-                data_paths.append(calc_path)
-            else:
-                raise UnidentifiedPathError((f'Supplied path_id: "{path_id}" '
-                                             f'is not in a recognized format'))
+
+        if workflow is None:
+            workflow = self.default_wf
+
+        # Use workflow method to resolve calc_ids or paths
+        data_paths, _existing_metadata = workflow.resolve_calc_paths(
+            path_ids, allow_paths=True)
 
         self.logger.info((f'Saving {len(data_paths)} '
                           f'{self.__class__.__name__} trajectories'))
 
         data = []
         for run_path in data_paths:
-            # parsed data is always a single atoms object from the Oracle
             data.extend(self.parse_for_storage(run_path))
 
         current_date = datetime.today().strftime('%Y-%m-%d')
@@ -252,9 +282,9 @@ class Simulator(Recorder, ABC):
 
         return new_handle
 
-    def _external_calculation_setup(self, path):
+    def _external_calculation_setup(self, path: str) -> None:
         """
-        utility function to call an attached external function for input setup
+        Utility function to call an attached external function for input setup
 
         If self.external_setup is set to ``True``, then this method will be
         called. The external code which set the setup flag to True should also
@@ -270,47 +300,123 @@ class Simulator(Recorder, ABC):
         else:
             raise AttributeError('Set external_func to a callable function!')
 
-    @abstractmethod
-    def write_input(self, run_path, input_args, input_file_name):
+    def _get_init_configs_from_path(
+        self,
+        config_path: str,
+        file_ext: str = '.xyz',
+        file_format: str = 'extxyz',
+    ) -> list[Atoms]:
         """
-        generate an input file for running a simulator calculation
+        Read the initial configuration for the simulator input from path
 
-        generate an input file using the ``input_template`` and ``input_args``
-        for the given structural configuration, written as an external file by
-        :meth:`write_initial_config`
+        Loads the configurations present in the ``config_path`` and all of its
+        sub-directories into a list of ASE Atoms.
+
+        :param config_path: path of the root directory where configuration
+            files are stored
+        :type config_path: str
+        :param file_ext: file extension |default| ``'.xyz'``
+        :type file_ext: str
+        :param file_ext: file format |default| ``'extxyz'``
+        :type file_ext: str
+        :returns: dataset as list of Atoms
+        :rtype: list of Atoms
+        """
+        return ase_glob_read(config_path, file_ext, file_format, index=':')
+
+    def _load_simulation_files(
+        self,
+        run_path: str,
+        simulation_files: Union[str, list[str], None],
+    ) -> None:
+        """
+        Ensure files needed for the simulation are provided in run directory
+
+        Make the trained model accessible for simulations, i.e. through loading
+        a KIM potential or ensuring the potential files are present in the
+        requisite folder. If none are provided, then simulation should be able
+        to run without any additional files present in the working directory.
+
+        :param run_path: root path where simulations will run and potential
+            should be loaded/copied
+        :type run_path: str
+        :param simulation_files: files or directories that are necessary for
+            the simulation to run
+        :type simulation_files: str
+        """
+        if simulation_files is None:
+            self.logger.info('Simulation files not provided, simulation '
+                             'should be able to run without any file input')
+        else:
+            if not isinstance(simulation_files, list):
+                simulation_files = [simulation_files]
+            for simulation_file in simulation_files:
+                sim_file_base_name = basename(simulation_file)
+                if isdir(simulation_file):
+                    shutil.copytree(simulation_file,
+                                    join(run_path, sim_file_base_name))
+                elif isfile(simulation_file):
+                    shutil.copyfile(simulation_file,
+                                    join(run_path, sim_file_base_name))
+                else:
+                    prefixed_files = glob(f'{simulation_file}*')
+                    if len(prefixed_files) == 0:
+                        self.logger.info(f'{simulation_file} does not match '
+                                         'any files or directories')
+                    for prefixed_file in prefixed_files:
+                        prefixed_basename = basename(prefixed_file)
+                        shutil.copyfile(prefixed_file,
+                                        join(run_path, prefixed_basename))
+
+    @abstractmethod
+    def _write_input(
+        self,
+        run_path: str,
+        input_template: str,
+        template_fill: dict[str, Any],
+        input_file_name: Optional[str] = None,
+    ) -> None:
+        """
+        Generate an input file for running a simulator calculation
+
+        generate an input file using the ``input_template`` and
+        ``template_fill`` for the given structural configuration, written as
+        an external file by :meth:`write_initial_config`
 
         :param run_path: root path where simulations will run
         :type run_path: str
-        :param input_args: additional arguments for the template, model
+        :param input_template: input template to use
+        :type input_template: str
+        :param template_fill: additional arguments for the template, model
             specific
-        :type input_args: dict
+        :type template_fill: dict
         :param input_file_name: name for the input file
         :type input_file_name: str
         """
         pass
 
     @abstractmethod
-    def write_initial_config(self, run_path, atoms):
+    def _write_initial_config(
+        self,
+        run_path: str,
+        atoms: Union[Atoms, list[Atoms]],
+    ) -> None:
         """
-        generate an input file for the initial structural configuration
-
-        Codes such as LAMMPS have an input file specifying the calculation and
-        a separate input file specifying the structural configuration. This
-        method generates the latter file.
+        Generate an input file for the initial structural configuration
 
         :param run_path: path where the configuration file will be written
         :type run_path: str
         :param atoms: the ASE Atoms object
-        :type pos: Atoms
+        :type atoms: Atoms
         """
         pass
 
     @abstractmethod
-    def get_run_command(self, args=None):
+    def _get_run_command(self, args: Optional[dict[str, Any]] = None) -> str:
         """
-        return the command to run a simulator calculation
+        Return the command to run a simulator calculation.
 
-        this method formats the run command based on the ``code_path`` internal
+        This method formats the run command based on the ``code_path`` internal
         variable set at instantiation of the Simulator, which the
         :class:`~orchestrator.workflow.workflow_base.Workflow` will execute in
         the proper ``run_path``. The args dictionary can be used to pass any
@@ -325,36 +431,26 @@ class Simulator(Recorder, ABC):
         pass
 
     @abstractmethod
-    def parse_for_storage(self, run_path):
+    def parse_for_storage(
+        self,
+        run_path: str = '',
+        calc_id: Union[int, str] = None,
+        workflow: Workflow = None,
+    ) -> list[Atoms]:
         """
-        process calculation output to extract data in a consistent format
+        Process calculation output to extract data in a consistent format.
 
-        Typically, the output of interest from simulators are the calculation
-        cell and atomic coordinates and type. However, additional information
-        could also be extracted as properties in the ASE Atoms object.
-
-        :param run_path: directory where the simulator output file resides
+        :param run_path: directory where the simulator output file resides.
+            If not provided, will be extracted from the workflow using calc_id.
         :type run_path: str
+        :param calc_id: Calculation ID to look up via workflow.get_job_path().
+            Can be int or str depending on workflow implementation.
+        :type calc_id: int or str
+        :param workflow: Workflow object of Orchestrator.
+        :type workflow: Workflow
         :returns: list of ASE Atoms of the configurations and any attached
             properties. Metadata with the configuration source information is
             attached to the METADATA_KEY in the info dict.
         :rtype: Atoms list
-        """
-        pass
-
-    @abstractmethod
-    def load_potential(self, run_path, model_path):
-        """
-        set up the potential to be used at run_path
-
-        Make the trained model accessible for simulations, i.e. through loading
-        a KIM potential or ensuring the potential files are present in the
-        requisite folder
-
-        :param run_path: root path where simulations will run and potential
-            should be loaded/linked
-        :type run_path: str
-        :param model_path: path where the model to load is stored
-        :type model_path: str
         """
         pass

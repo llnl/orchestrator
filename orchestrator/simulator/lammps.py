@@ -1,85 +1,95 @@
-from os import system
-from os.path import abspath, join, isdir
+from os.path import abspath, join
+from typing import Any, Optional, Union
+from ase import Atoms
 from ase.io import read
 from .simulator_base import Simulator
-from ..utils import templates
+from ..workflow import Workflow
+from ..utils.templates_jinja import render_template_to_file
 from ..utils.data_standard import METADATA_KEY
 from ..utils.input_output import safe_write
 
 
 class LAMMPSSimulator(Simulator):
     """
-    Class for preparing input, running, and processing LAMMPS calculations
+    Class for preparing input, running, and processing LAMMPS calculations.
 
-    Responsible for creating lammps and configuration input files, providing
+    Responsible for creating LAMMPS and configuration input files, providing
     commands to run LAMMPS, linking KIM potentials to the LAMMPS run, and
-    parsing the output to extract atomic configurations from trajectories
+    parsing the output to extract atomic configurations from trajectories.
 
-    :param simulator_args: dictionary of parameters to instantiate the
-        Simulator, such as code_path (executable to use), elements (list of
-        elements present in the simulation), and input_template (the path to an
-        input template to build from)
-    :type simulator_args: dict
+    :param code_path: path to the simulator executable
+    :param elements: list of elements present in the simulation
+    :param input_template: path to an input template to build from
+    :param kwargs: additional keyword arguments for extensibility
     """
 
-    def __init__(self, simulator_args):
+    def __init__(
+        self,
+        code_path: str,
+        elements: list[str],
+        input_template: Optional[str] = None,
+        **kwargs: Any,
+    ) -> None:
         """
         Class for preparing input, running, and processing LAMMPS calculations
 
-        :param simulator_args: dictionary of parameters to instantiate the
-            Simulator, such as code_path (executable to use), elements (list of
-            elements present in the simulation), and input_template (the path
-            to an input template to build from)
-        :type simulator_args: dict
+        :param code_path: path to the LAMMPS executable
+        :param elements: list of elements present in the simulation
+        :param input_template: path to an input template to build from
+        :param kwargs: additional keyword arguments for extensibility
         """
-        self.code_path = simulator_args.get('code_path')
-        if self.code_path is None:
-            raise KeyError(('A path to the LAMMPS executable (code_path) must '
-                            'be provided in simulator_args to instantiate a '
-                            'LAMMPSSimulator'))
+        if code_path is None:
+            raise ValueError('A path to the LAMMPS executable (code_path) must'
+                             ' be provided to instantiate a LAMMPSSimulator')
+        self.code_path = code_path
 
-        self.elements = simulator_args.get('elements')
-        if self.elements is None:
-            raise KeyError(('A list of elements (elements) present in the '
-                            'simulations must be provided in simulator_args to'
-                            'instantiate a LAMMPSSimulator'))
+        if elements is None:
+            raise ValueError('A list of elements (elements) must be provided '
+                             'to instantiate a LAMMPSSimulator')
+        self.elements = elements
+        self.template_units: Optional[str] = None
 
-        self.input_template = simulator_args.get('input_template')
-        if self.input_template is None:
-            raise KeyError(('A path to an input template (input_template) must'
-                            ' be present in simulator_args to instantiate a '
-                            'LAMMPSSimulator'))
+        super().__init__(input_template=input_template, **kwargs)
 
-        super().__init__(simulator_args)
-
-    def write_input(self, run_path, input_args, input_file_name):
+    def _write_input(
+        self,
+        run_path: str,
+        input_template: str,
+        template_fill: dict[str, Any],
+        input_file_name: Optional[str] = None,
+    ) -> None:
         """
-        generate an input file for running a simulator calculation
-
-        generate an input file using the ``input_template`` and ``input_args``
-        for the given structural configuration, written as an external file by
-        :meth:`write_initial_config`
+        Generate an input file for running a LAMMPS calculation
 
         :param run_path: root path where simulations will run
         :type run_path: str
-        :param input_args: additional arguments for the template, model
-            specific
-        :type input_args: dict
+        :param input_template: input template to use
+        :type input_template: str
+        :param template_fill: data to fill in the template
+        :type template_fill: dict
         :param input_file_name: name for the input file
         :type input_file_name: str
         """
         if input_file_name is None:
             input_file_name = 'lammps.in'
-        input_file = templates.Templates(self.input_template, run_path,
-                                         input_file_name)
-        patterns = list(input_args.keys())
-        replacements = list(input_args.values())
-        file_name = input_file.replace(patterns, replacements)
+
+        file_name = render_template_to_file(
+            input_template,
+            run_path,
+            template_fill,
+            input_file_name,
+        )
+        self.template_units = self._parse_template_units(
+            f'{run_path}/{file_name}')
         self.logger.info(f'LAMMPS input written to {run_path}/{file_name}')
 
-    def write_initial_config(self, run_path, atoms):
+    def _write_initial_config(
+        self,
+        run_path: str,
+        atoms: Union[Atoms, list[Atoms]],
+    ) -> None:
         """
-        Write LAMMPS conf file - initial condintion for simulation
+        Write LAMMPS conf file - initial condition for simulation.
 
         In addition to the lammps input file, the inital configuration is
         specified in the conf.lmp file. Conf.lmp defines the atomic positions
@@ -89,18 +99,18 @@ class LAMMPSSimulator(Simulator):
 
         :param run_path: path where the configuration file will be written
         :type run_path: str
-        :param atoms: the configuration to write
+        :param atoms: the ASE Atoms object
         :type atoms: Atoms
         """
         safe_write(join(run_path, 'conf.lmp'), atoms, format='lammps-data')
         self.logger.info((f'Completed writing of the initial configuration '
                           f'file to {run_path}/conf.lmp'))
 
-    def get_run_command(self, args=None):
+    def _get_run_command(self, args: Optional[dict[str, Any]] = None) -> str:
         """
-        return the command to run a LAMMPS calculation
+        Return the command to run a LAMMPS calculation.
 
-        this method formats the run command based on the ``code_path`` internal
+        This method formats the run command based on the ``code_path`` internal
         variable set at instantiation of the Simulator, which the
         :class:`~orchestrator.workflow.workflow_base.Workflow` will execute in
         the proper ``run_path``. The args dictionary can be used to pass the
@@ -127,21 +137,50 @@ class LAMMPSSimulator(Simulator):
             command = f'{self.code_path} -in {input_file} -log lammps.out'
         return command
 
-    def parse_for_storage(self, run_path):
+    def _parse_template_units(self, template_path: str) -> Optional[str]:
         """
-        process LAMMPS output to extract data in the format for Storage
+        Parse the input template to extract simulation units.
 
-        Typically, the output of interest from simulators are the calculation
-        cell and atomic coordinates and type. However, additional information
-        could also be extracted as properties in the ASE Atoms object.
+        :param template_path: Path to the input template.
+        :return: The units specified in the template or None if not found.
+        """
+        try:
+            with open(template_path, 'r') as f:
+                content = f.read()
+            for line in content.splitlines():
+                if line.strip().startswith('units'):
+                    parts = line.split()
+                    if len(parts) > 1:
+                        return parts[1].strip()
+            return None
+        except Exception as e:
+            self.logger.warning(f'Unable to parse template units: {e}')
+            return None
 
-        :param run_path: directory where the lammps output file resides
+    def parse_for_storage(
+        self,
+        run_path: str = '',
+        calc_id: Union[int, str] = None,
+        workflow: Workflow = None,
+    ) -> list[Atoms]:
+        """
+        Process LAMMPS output to extract data in a consistent for Storage.
+
+        :param run_path: directory where the LAMMPS output file resides.
+            If not provided, will be extracted from the workflow using calc_id.
         :type run_path: str
+        :param calc_id: Calculation ID to look up via workflow.get_job_path().
+            Can be int or str depending on workflow implementation.
+        :type calc_id: int or str
+        :param workflow: Workflow object of Orchestrator.
+        :type workflow: Workflow
         :returns: list of ASE Atoms of the configurations and any attached
             properties. Metadata with the configuration source information is
             attached to the METADATA_KEY in the info dict.
-        :rtype: Atoms
+        :rtype: Atoms list
         """
+        if not run_path:
+            run_path = workflow.get_job_path(calc_id)
         output_file = 'dump.lammpstrj'
         full_path = run_path + '/' + output_file
 
@@ -158,41 +197,10 @@ class LAMMPSSimulator(Simulator):
             }
         return trajectory
 
-    def load_potential(self, run_path, model_path):
-        """
-        set up the potential to be used at run_path
-
-        Make the trained model accessible for simulations, i.e. through loading
-        a KIM potential or ensuring the potential files are present in the
-        requisite folder. If model path is not provided, then the code will
-        assume that the model has been loaded in the user enviroment of KIM and
-        is accessible from outside the current directory.
-
-        :param run_path: root path where simulations will run and potential
-            should be loaded/linked
-        :type run_path: str
-        :param model_path: path where the model to load is stored
-        :type model_path: str
-        """
-        if model_path is None:
-            self.logger.info(('Model path not provided, model should be '
-                              'installed at the user level'))
-        else:
-            if isdir(model_path):
-                # if the potential is a directory with files (i.e. KIM) then
-                # link the file to run_path with the same name
-                potential_name = model_path.strip('/').split('/')[-1]
-                system(f'ln -s `realpath {model_path}` ./{run_path}/'
-                       f'{potential_name}')
-            else:
-                # if the potential is not a directory, it is a (set of)
-                # file(s) which need to be linked
-                system(f'ln -s `realpath {model_path}`* ./{run_path}/')
-
     # lammps specific helper function
-    def _convert_label_to_integer(self, atomic_labels):
+    def _convert_label_to_integer(self, atomic_labels: list[str]) -> list[int]:
         """
-        Converts atomic label (string) to integer
+        Converts atomic label (string) to integer.
 
         LAMMPS identifies atoms by integer indexes, but atoms are typically
         identified by their chemical symbol strings. This helper function
@@ -206,9 +214,9 @@ class LAMMPSSimulator(Simulator):
         """
         return [self.elements.index(k) + 1 for k in atomic_labels]
 
-    def _convert_integer_to_label(self, atomic_ids):
+    def _convert_integer_to_label(self, atomic_ids: list[int]) -> list[str]:
         """
-        Converts atomic ids (integer) to labels (string)
+        Converts atomic ids (integer) to labels (string).
 
         LAMMPS identifies atoms by integer indexes, but atoms are typically
         identified by their chemical symbol strings. This helper function

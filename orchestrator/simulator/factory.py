@@ -57,7 +57,7 @@ class SimulatorBuilder(ModuleBuilder):
                     pass
 
         simulator_constructor = self.factory.select_module(simulator_type)
-        return simulator_constructor(simulator_args)
+        return simulator_constructor(**simulator_args)
 
 
 #: simulator builder object which can be imported for use in other modules
