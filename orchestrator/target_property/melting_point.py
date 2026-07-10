@@ -24,25 +24,6 @@ class MeltingPoint(TargetProperty):
     results in solid/liquid phase. Simulation parameters and required
     paths are read from json file.
 
-    :param target_property_args: dict with the input parameters. The parameters
-        include:
-    :param path_type: path to perform target property calculations
-    :type path_type: str
-    :param model_path: path to store the potential file
-    :type model_path: str
-    :param init_config: path to pull configuration files
-    :type init_config: str
-    :param init_config_use: option to use an initial config file
-    :type init_config_use: boolean
-    :param gpu_use: option to use gpu for running simulations
-    :type gpu_use: boolean
-    :param random_seed_use: option to use random seed in the simulation
-    :type random_seed_use: boolean
-    :param melting_calc_params: melting point estimation specific
-        parameters
-    :type melting_calc_params: dict
-    :param sim_params: simulation specific parameters
-    :type sim_params: dict
     :param simulator_type: name of the simulator to perform simulations
     :type simulator_type: str
     :param simulator_path: path to the simulator executable
@@ -54,33 +35,28 @@ class MeltingPoint(TargetProperty):
         template files required for conducting simulations (e.g. one input
         simulations).
     :type input_template: dict
+    :param job_details: optional parameters for running the job
+    :type job_details: dict
+    :param npt_job_details: optional parameters for running the NPT job
+    :type npt_job_details: dict
+    :param nph_job_details: optional parameters for running the NPH job
+    :type nph_job_details: dict
     """
 
-    def __init__(self, **target_property_args):
+    def __init__(
+        self,
+        simulator_type: str,
+        simulator_path: str,
+        input_template: str,
+        job_details: dict,
+        elements: list = [],
+        npt_job_details: dict = {},
+        nph_job_details: dict = {},
+        **kwargs: Any,
+    ):
         """
         Initialization of the MeltingPoint class with args dict
 
-        :param target_property_args: dict with the input parameters. The
-            parameters include:
-        :param path_type: path to perform target property calculations
-        :type path_type: str
-        :param model_path: path to store the potential file
-        :type model_path: str
-        :param init_config: path to pull configuration files
-        :type init_config: str
-        :param init_config_use: option to use an initial config file
-        :type init_config_use: boolean
-        :param gpu_use: option to use gpu for running simulations
-        :type gpu_use: boolean
-        :param random_seed_use: option to use random seed in the simulation
-        :type random_seed_use: boolean
-        :param melting_calc_params: melting point estimation specific
-            parameters
-        :type melting_calc_params: dict
-        :param sim_params: simulation specific parameters
-        :type sim_params: dict
-        :param job_details: optional parameters for running the job
-        :type job_details: dict
         :param simulator_type: name of the simulator to perform simulations
         :type simulator_type: str
         :param simulator_path: path to the simulator executable
@@ -93,32 +69,25 @@ class MeltingPoint(TargetProperty):
             template for npt simulations and another inpute template for nph
             simulations).
         :type input_template: dict
+        :param job_details: optional parameters for running the job
+        :type job_details: dict
+        :param npt_job_details: optional parameters for running the NPT job
+        :type npt_job_details: dict
+        :param nph_job_details: optional parameters for running the NPH job
+        :type nph_job_details: dict
         """
-        self.path_type = target_property_args['path_type']
-        self.model_path = target_property_args['model_path']
-        self.init_config = target_property_args['init_config']
-        self.init_config_use = target_property_args['init_config_use']
-        self.random_seed_use = target_property_args['random_seed_use']
-        self.melting_calc_params = target_property_args['melting_calc_params']
-        self.sim_params = target_property_args['sim_params']
 
-        job_details = target_property_args['job_details']
-        npt_job_details = target_property_args.get('npt_job_details', {})
+        self.npt_job_details = npt_job_details
         self.npt_job_details = {**job_details, **npt_job_details}
-        nph_job_details = target_property_args.get('nph_job_details', {})
+        self.nph_job_details = nph_job_details
         self.nph_job_details = {**job_details, **nph_job_details}
 
-        self.num_calculations = target_property_args.get('num_calculations', 1)
-
-        simulator_type = target_property_args['simulator_type']
-        simulator_path = target_property_args['simulator_path']
-        self.elements = target_property_args['elements']
-        self.input_template_npt = target_property_args['input_template']['NPT']
-        self.input_template_nph = target_property_args['input_template']['NPH']
+        self.input_template_npt = input_template['NPT']
+        self.input_template_nph = input_template['NPH']
 
         npt_simulator_args = {
             'code_path': simulator_path,
-            'elements': self.elements,
+            'elements': elements,
             'input_template': self.input_template_npt,
         }
         self.built_simulator_npt = simulator_builder.build(
@@ -128,7 +97,7 @@ class MeltingPoint(TargetProperty):
 
         nph_simulator_args = {
             'code_path': simulator_path,
-            'elements': self.elements,
+            'elements': elements,
             'input_template': self.input_template_nph,
         }
         self.built_simulator_nph = simulator_builder.build(
@@ -141,7 +110,7 @@ class MeltingPoint(TargetProperty):
         self.outstanding_nph = None
         self.npt_calcs = []
         self.nph_calcs = []
-        super().__init__(**target_property_args)
+        super().__init__(**kwargs)
 
     def checkpoint_property(self) -> None:
         """
@@ -196,6 +165,11 @@ class MeltingPoint(TargetProperty):
 
     def calculate_property(
         self,
+        path_type: str,
+        melting_calc_params: dict,
+        sim_params: dict,
+        model_path: str = None,
+        random_seed_use: bool = False,
         iter_num: int = 0,
         modified_params: Optional[Dict[str, Any]] = None,
         potential: Optional[Union[str, Potential]] = None,
@@ -226,11 +200,22 @@ class MeltingPoint(TargetProperty):
         to test between minimum and maximum temperature guesses,
         max_iter (int, maximum number of iterations for screening
         temperature in NPH stage). These are defined by
-        self.melting_calc_params and set at class instantiation.
+        melting_calc_params and set at class instantiation.
         This method also uses temp (float, simulation temperature),
         press (float, simulation pressure), which are defined
-        by self.sim_params and set at class instantiation.
+        by sim_params and set at class instantiation.
 
+        :param path_type: path to perform thermo calculations
+        :type path_type: str
+        :param model_path: path to store the potential file
+        :type model_path: str
+        :param melting_calc_params: melting point estimation specific
+            parameters
+        :type melting_calc_params: dict
+        :param sim_params: simulation specific parameters
+        :type sim_params: dict
+        :param random_seed_use: option to use random seed in the simulation
+        :type random_seed_use: boolean
         :param iter_num: iteration number of the calculation of melting point
             if executed over multiple iterations
         :type iter_num: int
@@ -244,18 +229,26 @@ class MeltingPoint(TargetProperty):
             either the string of a KIM potential available via the KIM API or
             a Potential object created by the Orchestrator.
         :type potential: str or Potential
+        :param workflow: the workflow for managing job submission
+        :type workflow: Workflow
+        :param storage: the storage module where the configurations will be
+            saved (not currently used).
+        :type storage: Storage
         :returns: dictionary with the final temperature that results in solid/
             liquid phases as the property_value, std based on time-averaging
             for the property_std, and a tuple of the NPT calculation ID list
             and the final NPH calculation ID as the calc_ids
         :rtype: dict
         """
+        # ensure restart is properly read
+        self.restart_property()
+
         if workflow is None:
             workflow = self.default_wf
 
         if modified_params is not None:
-            self.sim_params['temp'] = modified_params['temp']
-            self.sim_params['press'] = modified_params['press']
+            sim_params['temp'] = modified_params['temp']
+            sim_params['press'] = modified_params['press']
 
         if isinstance_no_import(potential, 'Potential'):
             if hasattr(potential, 'install_potential_in_kim_api') and callable(
@@ -268,47 +261,52 @@ class MeltingPoint(TargetProperty):
                 potential_name = potential.kim_id
                 potential.install_potential_in_kim_api(
                     potential_name=potential_name, save_path=save_root)
-                self.model_path = f'{save_root}/{potential_name}'
+                model_path = f'{save_root}/{potential_name}'
 
-                self.sim_params['potential'] = potential_name
+                sim_params['potential'] = potential_name
             else:
-                raise NotImplementedError('Melting point calculations only '
-                                          'supports Potentials with working '
-                                          'install_potential_in_kim_api '
-                                          'methods at this time')
+                try:
+                    potential_string = potential.get_lammps_commands()
+                    sim_params['potential'] = potential_string
+                    self.logger.info(
+                        'Using generated LAMMPS commands for potential')
+                except (ValueError, FileNotFoundError) as e:
+                    self.logger.warning(
+                        f'Could not generate LAMMPS commands: {e}. ')
+                    raise
         else:
             if potential is not None:
-                self.sim_params['potential'] = potential
+                sim_params['potential'] = potential
 
-        timestep = self.sim_params.get('timestep', 0.001)
-        lattice_param = self.sim_params.get('lattice_param', 'unknown')
+        timestep = sim_params.get('timestep', 0.001)
+        lattice_param = sim_params.get('lattice_param', 'unknown')
         assert lattice_param != 'unknown' and lattice_param > 0, \
             "Lattice parameter is not given or assigned to a wrong value"
 
-        temp_threshold = self.melting_calc_params.get('temp_thresh', 1000.0)
+        temp_threshold = melting_calc_params.get('temp_thresh', 1000.0)
         assert temp_threshold > 0, \
             "Temperature threshold must be a positive value"
-        temp_min = self.melting_calc_params.get('temp_min', 0.0)
+        temp_min = melting_calc_params.get('temp_min', 0.0)
         assert isinstance(temp_min, float) or isinstance(temp_min, int), \
             "Minimum temperature must be a number"
-        temp_max = self.melting_calc_params.get('temp_max', 12000.0)
+        temp_max = melting_calc_params.get('temp_max', 12000.0)
         assert isinstance(temp_max, float) or isinstance(temp_max, int), \
             "Maximum temperature must be a number"
-        num_temp = self.melting_calc_params.get('num_temp', 4)
+        num_temp = melting_calc_params.get('num_temp', 4)
         assert num_temp > 0, "Number of temperatures must be a positive value"
-        temp_incr = self.melting_calc_params.get('temp_incr', 100.0)
+        temp_incr = melting_calc_params.get('temp_incr', 100.0)
         assert temp_incr > 0, "Temperature threshold must be a positive value"
-        exp_den_solid = self.melting_calc_params.get('exp_den_solid', 'none')
+        exp_den_solid = melting_calc_params.get('exp_den_solid', 'none')
         assert exp_den_solid != 'none' and exp_den_solid > 0, \
             "Exp. solid density is not given or assigned to a wrong value"
-        exp_den_liquid = self.melting_calc_params.get('exp_den_liquid', 'none')
+        exp_den_liquid = melting_calc_params.get('exp_den_liquid', 'none')
         assert exp_den_liquid != 'none' and exp_den_liquid > 0, \
             "Exp. liquid density is not given or assigned to a wrong value"
-        den_tol = self.melting_calc_params.get('den_tol', 10.0)
+        den_tol = melting_calc_params.get('den_tol', 10.0)
         assert den_tol > 0, "Density tolerance must be a positive value"
-        max_iter = self.melting_calc_params.get('max_iter', 4)
+        max_iter = melting_calc_params.get('max_iter', 4)
         assert max_iter > 0, "Maximum iterations must be a positive value"
-        eps_dbscan = self.melting_calc_params.get('eps_dbscan', 0.025)
+        eps_dbscan = melting_calc_params.get('eps_dbscan', 0.025)
         assert eps_dbscan != 'none' and eps_dbscan > 0, \
             "Eps parameter is not set or assigned to a wrong value"
         temp_final = None
@@ -332,10 +330,14 @@ class MeltingPoint(TargetProperty):
                 self.logger.info(f'Temperatures to test : {temp_list}')
                 if len(self.outstanding_npt) == 0:
                     for temp in temp_list:
-                        self.sim_params['temp'] = temp
-                        calc_id = self.conduct_sim(
-                            self.sim_params, workflow,
-                            self.path_type + '/' + str(iter_num) + '/NPT')
+                        sim_params['temp'] = temp
+                        calc_id = self._conduct_sim(
+                            model_path,
+                            sim_params,
+                            workflow,
+                            path_type + '/' + str(iter_num) + '/NPT',
+                            random_seed_use=random_seed_use,
+                        )
                         self.outstanding_npt.append(calc_id)
                     # checkpoint after the batch of calcs are submitted
                     self.npt_calcs.append(self.outstanding_npt)
@@ -386,8 +388,8 @@ class MeltingPoint(TargetProperty):
                         [log_msd_npt,
                          str(timestep),
                          str(lattice_param)])
-                    density_npt = AnalyzeLammpsLog.extract_density(
-                        [log_msd_npt])
+                    _, _, density_npt, _ = AnalyzeLammpsLog.extract_property(
+                        [log_msd_npt, 'Density'])
 
                     self.check_density(phase, density_npt, exp_den_solid,
                                        exp_den_liquid, den_tol, c_id)
@@ -458,14 +460,16 @@ class MeltingPoint(TargetProperty):
                     else:
                         temp_estimate -= temp_incr
 
-                self.sim_params['temp'] = temp_estimate
+                sim_params['temp'] = temp_estimate
                 self.logger.info(f'Iteration {n_iter}: Starting NPH simulation'
                                  ' with an estimated equilibrium temperature: '
                                  f' {temp_estimate} K')
-                self.outstanding_nph = self.conduct_sim(
-                    self.sim_params,
+                self.outstanding_nph = self._conduct_sim(
+                    model_path,
+                    sim_params,
                     workflow,
-                    self.path_type + '/' + str(iter_num) + '/NPH',
+                    path_type + '/' + str(iter_num) + '/NPH',
+                    random_seed_use=random_seed_use,
                 )
                 self.nph_calcs.append(self.outstanding_nph)
                 # checkpoint after the batch of calc is submitted
@@ -508,7 +512,8 @@ class MeltingPoint(TargetProperty):
                     [run_path_nph, log_msd_nph, q_profile_nph,
                      str(eps_dbscan)])
 
-            density_nph = AnalyzeLammpsLog.extract_density([log_msd_nph])
+            _, _, density_nph, _ = AnalyzeLammpsLog.extract_property(
+                [log_msd_nph, 'Density'])
             density_upper = (exp_den_solid + exp_den_liquid) / 2 + den_tol
             density_lower = (exp_den_solid + exp_den_liquid) / 2 - den_tol
             if density_nph < density_upper and density_nph > density_lower:
@@ -558,14 +563,23 @@ class MeltingPoint(TargetProperty):
         }
         return results_dict
 
-    def conduct_sim(
+    def _conduct_sim(
         self,
+        model_path: str,
         sim_params: Dict[str, Any],
         workflow: Workflow,
         sim_path: str,
-    ) -> int:
+        random_seed_use: bool = False,
+    ) -> Union[int, str]:
         """
-        Perform simulations for the target property calculations
+        Launch a single LAMMPS simulation for the target property calculations
+
+        This method prepares and submit a simulation using the LAMMPS simulator
+        configured at class initialization. When multiple simulations are
+        requested, this method is called repeatedly by ``calculate_property``.
+        The method fills the LAMMPS input template, submits the job through the
+        provided workflow, and returns a calculation ID that can be used to
+        track job completion and retrieve simulation outputs.
 
         Additional parameters used by this method are temp (float, simulation
         temperature), press (float, simulation pressure), ice_temp (float, ice
@@ -580,18 +594,27 @@ class MeltingPoint(TargetProperty):
         spacing), lx, ly, lz (int, lattice numbers in x, y and z directions),
         timestep (float, timestep size in time units), q_num_neigh (int,
         number of nearest neighbors for q_x calculations), nph_steps (int,
-        number of steps for the NPH stage) which are defined by self.sim_params
+        number of steps for the NPH stage) which are defined by sim_params
         and set at class instantiation. These parameters are modified by
         calculate_property method on-the-fly and supplied to this method for
         setting simulation temperature and pressure.
 
+        :param model_path: path to store the potential file
+        :type model_path: str
+        :param sim_params: simulation specific parameters containing all
+            the parameters mentioned above
+        :type sim_params: dict
         :param workflow: the workflow for managing job submission
         :type workflow: Workflow
         :param sim_path: path to perform simulations for
             target property calculations
         :type sim_path: str
-        :returns: path corresponding to a spawned simulation
-        :rtype: string
+        :param random_seed_use: option to use random seed in the simulation.
+            If True, generates a random seed between 1 and 10000; otherwise
+            uses a fixed seed of 999
+        :type random_seed_use: bool
+        :returns: calculation ID corresponding to a spawned simulation
+        :rtype: int, str
         """
 
         press = sim_params.get('press', 0.0)
@@ -634,12 +657,12 @@ class MeltingPoint(TargetProperty):
         npt_steps = sim_params.get('npt_steps', 500000)
         nph_steps = sim_params.get('nph_steps', 100000)
 
-        if self.random_seed_use is True:
+        if random_seed_use is True:
             random_seed = random.randint(1, 10000)
         else:
             random_seed = 999
 
-        input_args = {
+        template_fill = {
             'temperature': temp,
             'pressure': press,
             'ice_temp': ice_temp,
@@ -668,21 +691,13 @@ class MeltingPoint(TargetProperty):
             'nph_steps': nph_steps
         }
 
-        init_config_args = {
-            'make_config': self.init_config_use,
-            'config_handle': self.init_config,
-            'storage': 'path',
-            'random_seed': random_seed
-        }
-
         if 'NPT' in sim_path:
             self.npt_job_details[
                 'input_file_name'] = self.input_template_npt.rsplit('/', 1)[1]
             calc_id = self.built_simulator_npt.run(
                 sim_path,
-                self.model_path,
-                input_args,
-                init_config_args,
+                model_path,
+                template_fill,
                 workflow=workflow,
                 job_details=self.npt_job_details,
             )
@@ -691,9 +706,8 @@ class MeltingPoint(TargetProperty):
                 'input_file_name'] = self.input_template_nph.rsplit('/', 1)[1]
             calc_id = self.built_simulator_nph.run(
                 sim_path,
-                self.model_path,
-                input_args,
-                init_config_args,
+                model_path,
+                template_fill,
                 workflow=workflow,
                 job_details=self.nph_job_details,
             )
@@ -706,7 +720,7 @@ class MeltingPoint(TargetProperty):
 
     def calculate_with_error(
         self,
-        n_calc: int,
+        num_calculations: int = 1,
         modified_params: Optional[Dict[str, Any]] = None,
         potential: Optional[Union[str, Potential]] = None,
         workflow: Optional[Workflow] = None,
@@ -715,34 +729,36 @@ class MeltingPoint(TargetProperty):
         Calculate a target property with mean and standard deviation
 
         Mean and standard deviation will be obtained from multiple
-        number of calculations (n_calc)
+        number of calculations (num_calculations). This method automatically
+        enables random_seed_use for all calculations to ensure statistical
+        independence between runs.
 
-        :param n_calc: total number of calculations to perform
-        :type n_calc: int
+        :param num_calculations: total number of calculations to perform
+        :type num_calculations: int
         :param modified_params: simulation parameters to modify the initially
             provided values, including interatomic potentials, simulation
-            temperature and pressure
+            temperature and pressure (not currently used, always None)
         :type modified_params: dict
         :param potential: interatomic potential to be used in LAMMPS
-        :type potential: str
+            (not currently used, always None)
+        :type potential: str or Potential
         :param workflow: the workflow for managing job submission
         :type workflow: Workflow
         :returns: dictionary with the average final temperature that results
-            in solid/liquid phases as the property_value, std from the n_calc
-            outputs for the property_std, and a tuple with no NPT and all the
-            final NPH calculation IDs as the calc_ids
+            in solid/liquid phases as the property_value, std from the
+            num_calculations outputs for the property_std, and a tuple with
+            an empty NPT list and all the final NPH calculation IDs as the
+            calc_ids
         :rtype: dict
         """
         if workflow is None:
             workflow = self.default_wf
-        if not self.random_seed_use:
-            self.random_seed_use = True
-            self.logger.warning('random_seed_use was false, but is required '
-                                'for calculate_with_error(). Setting to True')
+
+        # calculate_with_error requires random_seed_use to be True
+        random_seed_use = True
 
         melt_temp_ave = None
         melt_temp_std = None
-        n_calc = self.num_calculations
         # if progress had been made, populate these values from restart dict
         # otherwise set to default/starting values
         start_iteration = self.current_state.get('iter_num', 0)
@@ -754,9 +770,10 @@ class MeltingPoint(TargetProperty):
             # calculation it saved
             self.restart = False
 
-        for i in range(start_iteration, n_calc):
+        for i in range(start_iteration, num_calculations):
             results_dict = self.calculate_property(
                 iter_num=i,
+                random_seed_use=random_seed_use,
                 modified_params=None,
                 potential=None,
                 workflow=workflow,
@@ -816,10 +833,10 @@ class MeltingPoint(TargetProperty):
         """
         save configurations generated by the melting point module
 
-        :param path_ids: single or list of ``calc_ids`` associated with
+        :param calc_ids: single or list of ``calc_ids`` associated with
             simulator jobs. The path is extracted from the
             :class:`~orchestrator.workflow.workflow_base.JobStatus`.
-        :type path_ids: list of int or int
+        :type calc_ids: list of int or int
         :param storage: storage module that hosts the dataset
         :type storage: Storage
         :param dataset_handle: handle for the dataset where configs will be
@@ -843,7 +860,7 @@ class MeltingPoint(TargetProperty):
     def check_density(
         self,
         phase: str,
-        density_npt: float,
+        density: float,
         exp_den_solid: float,
         exp_den_liquid: float,
         den_tol: float,
@@ -854,8 +871,8 @@ class MeltingPoint(TargetProperty):
 
         :param phase: phase detected in the simulation (e.g. solid, liquid)
         :type phase: str
-        :param density_npt: density calculated from the npt simulations
-        :type density_npt: float
+        :param density: density calculated from the simulations
+        :type density: float
         :param exp_den_solid: expected density of the material from the
             experiments. This does not need to be exact value, especially
             if the experimental value is not available
@@ -872,20 +889,20 @@ class MeltingPoint(TargetProperty):
         """
 
         if phase == 'solid':
-            if (density_npt < exp_den_solid
-                    + den_tol) and (density_npt > exp_den_solid - den_tol):
+            if (density < exp_den_solid + den_tol) and (density > exp_den_solid
+                                                        - den_tol):
                 self.logger.info(
-                    f'Solid density ({density_npt} g/cm^3) is in expected'
+                    f'Solid density ({density} g/cm^3) is in expected'
                     f' range, continue melting point calculations ')
             else:
                 self.failed_job_id = calc_id
                 raise DensityOOBError(
                     'density for solid phase is out of expected range')
         elif phase == 'liquid':
-            if (density_npt < exp_den_liquid
-                    + den_tol) and (density_npt > exp_den_liquid - den_tol):
+            if (density < exp_den_liquid
+                    + den_tol) and (density > exp_den_liquid - den_tol):
                 self.logger.info(
-                    f'Liquid density ({density_npt} g/cm^3) is in expected'
+                    f'Liquid density ({density} g/cm^3) is in expected'
                     f' range, continue melting point calculations ')
             else:
                 self.failed_job_id = calc_id

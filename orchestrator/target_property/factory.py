@@ -76,6 +76,13 @@ class TargetPropertyBuilder(ModuleBuilder):
                     target_property_factory.add_new_module('KIMRun', KIMRun)
                 except ModuleAlreadyInFactoryError:
                     pass
+            case 'CalculateLammpsThermo':
+                from .calculate_lammps_thermo import CalculateLammpsThermo
+                try:
+                    target_property_factory.add_new_module(
+                        'CalculateLammpsThermo', CalculateLammpsThermo)
+                except ModuleAlreadyInFactoryError:
+                    pass
 
         target_property_constructor = self.factory.select_module(
             target_property_type)

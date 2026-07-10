@@ -13,10 +13,19 @@ class AnalyzeLammpsLog:
     This class is adapted from henriasv.github.io/lammps-logfile
 
     :param ifile: path to lammps log file
-    :type ifile: string
+    :type ifile: str
     """
 
-    def __init__(self, ifile):
+    def __init__(self, ifile: str):
+        """
+        Initialize AnalyzeLammpsLog instance.
+
+        Reads data from the specified lammps log file and initializes data
+        structures.
+
+        :param ifile: Path to the lammps log file.
+        :type ifile: str
+        """
         # Identifiers for places in the log file
         self.start_thermo_strings = [
             'Memory usage per processor', 'Per MPI rank memory allocation'
@@ -28,14 +37,13 @@ class AnalyzeLammpsLog:
         self.partial_logs = []
         self.read_file_to_dict(ifile)
 
-    def read_file_to_dict(self, log_file):
-        '''
+    def read_file_to_dict(self, log_file: str) -> None:
+        """
         Store lammps log data into a dictionary
 
-        :param ifile: path to lammps log file
-        :type ifile: string
-        '''
-
+        :param log_file: path to lammps log file
+        :type log_file: str
+        """
         with open(log_file, 'r') as f:
             contents = f.readlines()
 
@@ -91,13 +99,21 @@ class AnalyzeLammpsLog:
                 before_first_run_flag = False
             i += 1
 
-    def flush_dict_and_set_new_keyword(self, keywords):
+    def flush_dict_and_set_new_keyword(self, keywords: list) -> None:
+        """
+        Resets the current data dictionary with a new set of keywords.
+
+        Clears existing log data and sets up empty arrays for each keyword.
+
+        :param keywords: List of log data column names.
+        :type keywords: list
+        """
         self.data_dict = {}
         for entry in keywords:
             self.data_dict[entry] = np.asarray([])
         self.keywords = keywords
 
-    def get(self, entry_name, run_num=-1):
+    def get(self, entry_name: str, run_num: int = -1) -> np.ndarray:
         """
         Get time-series from log file by name.
 
@@ -112,7 +128,6 @@ class AnalyzeLammpsLog:
             returns data from all runs concatenated
         :type run_num: int
         """
-
         if run_num == -1:
             if entry_name in self.data_dict.keys():
                 return self.data_dict[entry_name]
@@ -128,9 +143,8 @@ class AnalyzeLammpsLog:
             else:
                 return None
 
-    def get_keywords(self, run_num=-1):
+    def get_keywords(self, run_num: int = -1) -> list:
         """Return list of available data columns in the log file."""
-
         if run_num == -1:
             return sorted(self.keywords)
         else:
@@ -139,7 +153,16 @@ class AnalyzeLammpsLog:
             else:
                 return None
 
-    def to_exdir_group(self, name, exdirfile):
+    def to_exdir_group(self, name: str, exdirfile) -> None:
+        """
+        Writes the partial log datasets to an exdir group.
+
+        Creates a group with the specified name in the given exdir file and
+        writes each partial log dataset into subgroups.
+
+        :param name: Name of the group to create.
+        :param exdirfile: An exdir file or object that supports group creation.
+        """
         group = exdirfile.require_group(name)
         for i, log in enumerate(self.partial_logs):
             subgroup = group.require_group(str(i))
@@ -147,19 +170,47 @@ class AnalyzeLammpsLog:
                 key = key.replace('/', '.')
                 subgroup.create_dataset(key, data=value)
 
-    def get_num_partial_logs(self):
+    def get_num_partial_logs(self) -> int:
+        """
+        Returns the number of partial log datasets.
+
+        :return: Number of partial logs.
+        :rtype: int
+        """
         return len(self.partial_logs)
 
+    def get_units(self) -> str:
+        """
+        Determines the simulation units from the output before the first run.
+
+        Extracts the unit system from the pre-log output and validates it
+        against supported units.
+
+        :return: The unit system as a string.
+        :rtype: str
+        :raises ValueError: If extracted units are not supported.
+        """
+        words = self.output_before_first_run.strip().split()
+        units_index = words.index('units')
+        units = words[units_index + 1]
+        if units not in [
+                'real', 'metal', 'si', 'cgs', 'electron', 'micro', 'nano'
+        ]:
+            if units == 'in' and words[units_index - 1] == 'Inconsistent':
+                raise RuntimeError('Inconsistent units detected')
+            else:
+                raise ValueError(
+                    f'Read units as [{units}], which is not supported')
+        return units
+
     @staticmethod
-    def extract_msd(args):
+    def extract_msd(args: argparse.Namespace) -> str:
         """
         Reads lammps log file and extract required data
-
 
         This function can be used to determine if the system
         is solid or liquid using mean square displacement analysis
         """
-
         parser = argparse.ArgumentParser(
             description="Read contents from lammps log files")
         parser.add_argument("log_file", type=str, help="Lammps log file")
@@ -205,35 +256,52 @@ class AnalyzeLammpsLog:
             return "solid"
 
     @staticmethod
-    def extract_density(args):
+    def extract_property(
+        args: argparse.Namespace
+    ) -> tuple[np.ndarray, np.ndarray, float, float]:
         """
+        Read a LAMMPS log file and extract a user defined time series property
 
-        This function can be used to determine if the system
-        is solid or liquid using mean square displacement analysis
+        This function parses command line style arguments, loads a LAMMPS log
+        file, extracts the requested property and corresponding time values
+        from the log file, and returns the time array, property array, and
+        the average and standard deviation of the property
+
+        :param args: Command line arguments passed to the function.
+            The expected positional arguments are log_file (path to the LAMMPS
+            log file) and sel (name of the property/column to extract from the
+            log)
+        :type args: list[str]
+        :returns: tuple of array of time values, array of the selected
+            property values over time, mean of the selected property, std of
+            the selected property
+        :rtype: tuple
         """
-
         parser = argparse.ArgumentParser(
             description="Read contents from lammps log files")
         parser.add_argument("log_file", type=str, help="Lammps log file")
+        parser.add_argument("sel", type=str, help="property selection")
 
         args = parser.parse_args(args)
         log = AnalyzeLammpsLog(args.log_file)
 
-        den_arr = log.get("Density", run_num=log.get_num_partial_logs() - 1)
+        time_arr = log.get("Time", run_num=log.get_num_partial_logs() - 1)
+        property_arr = log.get(args.sel,
+                               run_num=log.get_num_partial_logs() - 1)
 
-        ave_den = np.mean(den_arr)
+        ave_prop = np.mean(property_arr)
+        std_prop = np.std(property_arr)
 
-        return ave_den
+        return time_arr, property_arr, ave_prop, std_prop
 
     @staticmethod
-    def extract_q(args):
+    def extract_q(args: argparse.Namespace) -> tuple:
         """
         Reads lammps output file and extract required data
 
         This function can be used to determine if the system
         is solid or liquid using q parameter
         """
-
         parser = argparse.ArgumentParser(
             description="Read contents from lammps log files")
         parser.add_argument("run_path",
@@ -312,8 +380,6 @@ class AnalyzeLammpsLog:
         if all(i >= 2
                for i in n_clusters[int(len(n_clusters)
                                        - 20):-1]) and len(n_clusters) > 0:
-
             return True, ave_temp, std_temp, label_unique, ave_q, total_atoms
         else:
-
             return False, ave_temp, std_temp, label_unique, ave_q, total_atoms

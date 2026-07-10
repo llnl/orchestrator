@@ -16,7 +16,13 @@ class TargetProperty(Recorder, ABC):
     :type args: dict
     """
 
-    def __init__(self, **target_property_args):
+    def __init__(
+        self,
+        checkpoint_file: str = "./orchestrator_checkpoint.json",
+        checkpoint_name: str = "property",
+        default_root_directory: str = "./target_property",
+        **kwargs,
+    ):
         """
         :param target_property_args: general argument structure which is
             specified by individual implementations
@@ -24,18 +30,15 @@ class TargetProperty(Recorder, ABC):
         """
 
         super().__init__()
-        self.args = target_property_args
-        self.checkpoint_file = target_property_args.get(
-            'checkpoint_file',
-            './orchestrator_checkpoint.json',
-        )
-        self.checkpoint_name = target_property_args.get(
-            'checkpoint_name', 'property')
+        self.additional_args = kwargs
+        self.checkpoint_file = checkpoint_file
+        self.checkpoint_name = checkpoint_name
 
         self.default_wf = workflow_builder.build(
             'LOCAL',
-            {'root_directory': './target_property'},
+            {'root_directory': default_root_directory},
         )
+
         self.restart_property()
 
     @abstractmethod
@@ -89,7 +92,7 @@ class TargetProperty(Recorder, ABC):
         pass
 
     @abstractmethod
-    def conduct_sim(
+    def _conduct_sim(
         self,
         sim_params: Dict[str, Any],
         workflow: Workflow,

@@ -234,7 +234,6 @@ class ElasticConstants(TargetProperty):
             sim_path,
             sim_params['model_path'],
             sim_params,
-            {'make_config': False},
             workflow=workflow,
             job_details=job_details,
         )
