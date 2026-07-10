@@ -1,21 +1,47 @@
 from ..storage import Storage
 from ..computer.score.score_base import ScoreBase
 from ..computer.score.quests import QUESTSEfficiencyScore
-from ..utils.data_standard import METADATA_KEY, SELECTION_MASK_KEY
+from ..oracle import Oracle
+from ..simulator import Simulator
+from ..target_property.analysis import AnalyzeLammpsLog
+from ..utils.data_standard import (
+    ENERGY_KEY,
+    METADATA_KEY,
+    SELECTION_MASK_KEY,
+    MOL_ID_KEY,
+    SITE_TYPE_KEY,
+    METADATA_PROPERTY_MAP,
+    MOL_PROPERTY_MAP,
+)
+from ..utils.data_utils import convert_field_units_lammps
 from ..utils.exceptions import CellTooSmallError
 from ..utils.isinstance import isinstance_no_import
 from ..utils.recorder import Recorder
 from ..utils.restart import restarter
 from ..workflow import Workflow
-from .extract_env import extract_env, find_central_atom, get_ith_shell
+from ..utils.structure_analysis_and_manipulation_tools import (
+    extract_env,
+    find_central_atom,
+    get_ith_shell,
+    get_nn_dist,
+    get_displacement_vec_from_dist,
+    rotation_matrix_xyz,
+    get_molecule_atoms,
+    apply_rotation_and_translation,
+    write_lammps_dump,
+)
 from ase import Atoms
+from ase.build import bulk
+from ase.io import read
 from copy import deepcopy
 from functools import partial
 import itertools
 from multiprocessing import Pool, cpu_count
 import numpy as np
 import os
+import pandas as pd
 from typing import Union, Optional, Any
+import matplotlib.pyplot as plt
 
 # from typing import TYPE_CHECKING
 # if TYPE_CHECKING:
@@ -567,6 +593,215 @@ class Augmentor(Recorder):
             [descriptors_key, f'{score_module.OUTPUT_KEY}_score'],
         )
         return extracted_cells
+
+    ###########################################################################
+    # Structure Generation                                                    #
+    ###########################################################################
+
+    def generate_single_atom_perturbations(
+        self,
+        element: str,
+        lattice_type: str,
+        alat: float,
+        min_nn_dist: float,
+        min_perturb_fraction: float,
+        supercell_multiple: int,
+        num_structs: int,
+        cubic: bool = True,
+    ) -> list[Atoms]:
+        """
+        Generate structures with single atom perturbations along NN axis
+
+        This function is intended to generate structures with "close contacts"
+        embedded in a supercell to augment IAP training data sets.
+
+        :param element: element symbol. Currently just support single elements
+        :type element: str
+        :param lattice_type: lattice type (passed to ASE bulk builder)
+        :type lattice_type: str
+        :param alat: lattice constant (Ang)
+        :type alat: float
+        :param min_nn_dist: minimum nearest neighbor distance (Ang), which will
+            provide the upper bound on the applied perturbation
+        :type min_nn_dist: float
+        :param min_perturb_fraction: minimum perturbation fraction of the NN
+            distance, which will provide the lower bound on the applied
+            perturbation
+        :type min_perturb_fraction: float
+        :param supercell_multiple: supercell size multiplier
+        :type supercell_multiple: int
+        :param num_structs: number of structures to generate. Structures will
+            have evenly spaced perturbations betweent the supplied bounds
+        :type num_structs: int
+        :param cubic: whether to use cubic cells |default| ``True``
+        :type cubic: bool
+        :return: list of perturbed atomic structures
+        :rtype: list of Atoms
+        """
+        nn_dist0 = get_nn_dist(alat, lattice_type)
+        max_perturb_fraction = 1 - min_nn_dist / nn_dist0
+        perturb_fractions = np.linspace(
+            min_perturb_fraction,
+            max_perturb_fraction,
+            num_structs,
+        )
+
+        base = bulk(element, lattice_type, a=alat, cubic=cubic) * (
+            supercell_multiple, supercell_multiple, supercell_multiple)
+
+        configs = []
+        for perturb_fraction in perturb_fractions:
+            # get displacement magnitude
+            nn_dist_shrink = nn_dist0 * perturb_fraction
+            displace_vec = get_displacement_vec_from_dist(
+                nn_dist_shrink,
+                lattice_type,
+                1,
+            )
+            # set up new Atoms
+            displaced = base.copy()
+            # displace atom 0 (0, 0, 0)
+            if (not np.array_equal(displaced.positions[0, :],
+                                   np.array([0, 0, 0]))):
+                raise RuntimeError('0 index is not at [0, 0, 0] as expected')
+            displaced.positions[0, :] += displace_vec
+            displaced.info[METADATA_KEY] = {
+                'displacement_frac': perturb_fraction,
+                'displacement_vec': displace_vec.tolist(),
+                'displacement_magnitude': nn_dist_shrink,
+            }
+            configs.append(displaced)
+        return configs
+
+    def generate_shaken_boxes(
+        self,
+        element: str,
+        lattice_type: str,
+        alat: float,
+        strain_range: tuple[float, float],
+        supercell_multiple: int,
+        num_structs: int,
+        temperature: float,
+        debeye_temp: float = 300,
+        mass_weighted: bool = True,
+        seed: Optional[int] = None,
+        cubic: bool = True,
+    ) -> list[Atoms]:
+        """
+        Apply thermal displacements to atoms based on temperature
+
+        This function is intended to generate structures with "close contacts"
+        by straining a pristine supercell and applying thermal noise to all
+        atoms.
+
+        :param element: element symbol. Currently just support single elements
+        :type element: str
+        :param lattice_type: lattice type (passed to ASE bulk builder)
+        :type lattice_type: str
+        :param alat: lattice constant (Ang)
+        :type alat: float
+        :param strain_range: range of strain values (min, max). Values < 1
+            correspond to compression. Values > 1 correspond to tension.
+        :type strain_range: tuple(float, float)
+        :param supercell_multiple: supercell size multiplier
+        :type supercell_multiple: int
+        :param num_structs: number of structures to generate. Structures will
+            have evenly spaced strain states betweent the supplied bounds
+        :type num_structs: int
+        :param temperature: temperature in K - affects magnitude of
+            displacements
+        :type temperature: float
+        :param debeye_temp: Debye temperature (K) - affects magnitude of
+            displacements |default| ``300``
+        :type debeye_temp: float
+        :param mass_weighted: whether to use mass-weighted displacements
+            |default| ``True``
+        :type mass_weighted: bool
+        :param seed: optional random seed for reproducibility
+        :type seed: int or None
+        :param cubic: whether to use cubic cells |default| ``True``
+        :type cubic: bool
+        :return: List of shaken atomic structures
+        :rtype: list of Atoms
+        """
+        if (len(strain_range) != 2 or strain_range[0] >= strain_range[1]):
+            raise ValueError('Compression range must be a tuple (x, y) '
+                             'where x < y')
+
+        if seed is not None:
+            np.random.seed(seed)
+
+        # Physical constants
+        kb = 8.617333262e-5  # Boltzmann constant in eV/K
+        hbar = 6.582119569e-16  # Reduced Planck constant in eV*s
+        ev2j = 1.602e-19
+        amu2kg = 1.66054e-27
+
+        # Characteristic frequency for the solid (in Hz)
+        # Using Debye frequency as approximation: omega_D ~ kb * Theta_D / hbar
+        # Typical Debye temperature ~ 300-400 K for many materials
+        # theta_debye = 2230  # Kelvin (adjustable parameter) for C (diamond)
+        # theta_debye = 300  # Kelvin (adjustable parameter)
+        theta_debye = debeye_temp
+        omega = kb * theta_debye / hbar  # Angular frequency in rad/s
+
+        strains = np.linspace(strain_range[0], strain_range[1], num_structs)
+        configs = []
+        mult = (supercell_multiple, supercell_multiple, supercell_multiple)
+        for strain in strains:
+            # generate the pristine cell
+            lat = alat * strain
+            config = bulk(element, lattice_type, a=lat, cubic=cubic) * mult
+
+            # Get atomic masses in amu
+            masses = config.get_masses()
+
+            # Calculate displacement magnitude for each atom
+            # From equipartition and harmonic oscillator:
+            # <x^2> = kb * T / (m * omega^2)
+            # RMS displacement = sqrt(<x^2>) = sqrt(kb * T / (m * omega^2))
+            for i in range(len(config)):
+                # Generate random unit vector (spherically uniform)
+                phi = np.random.uniform(0, 2 * np.pi)
+                cos_theta = np.random.uniform(-1, 1)
+                sin_theta = np.sqrt(1 - cos_theta**2)
+
+                # Cartesian coordinates of unit vector
+                displace_direction = np.array([
+                    sin_theta * np.cos(phi),
+                    sin_theta * np.sin(phi),
+                    cos_theta,
+                ])
+
+                # Calculate RMS displacement using proper statistical mechanics
+                if mass_weighted:
+                    # sigma (A) = sqrt(kb*T/(m*omega^2))
+                    mass_kg = masses[i] * amu2kg  # amu to kg
+                    sigma2 = kb * ev2j * temperature / (mass_kg * omega**2)
+                    sigma_m = np.sqrt(sigma2)  # in meters
+                    sigma = sigma_m * 1e10  # Convert to Angstroms
+                else:
+                    # Use average mass if not mass-weighted
+                    avg_mass_kg = np.mean(masses) * amu2kg
+                    sigma2 = kb * ev2j * temperature / (avg_mass_kg * omega**2)
+                    sigma_m = np.sqrt(sigma2)  # in meters
+                    sigma = sigma_m * 1e10
+
+                # Sample displacement magnitude from Gaussian
+                displacement_magnitude = np.random.normal(0, sigma)
+
+                # Apply displacement
+                displacement = displacement_magnitude * displace_direction
+                config.positions[i] += displacement
+            config.info[METADATA_KEY] = {
+                'strain': strain,
+                'temperature': temperature,
+                'theta_debye': theta_debye,
+                'mass_weighted': mass_weighted,
+            }
+            configs.append(config)
+
+        return configs
 
     ###########################################################################
     # Pruning methods and submethods                                          #
@@ -1486,3 +1721,468 @@ class Augmentor(Recorder):
                 1, np.sum(config.get_array(SELECTION_MASK_KEY)))
 
         return config_splits, split_index_maps, start_indices
+
+    ###########################################################################
+    # Dimer generation functions                            #
+    ###########################################################################
+
+    def generate_dimer_configs(
+        self,
+        mol1_rotations: np.ndarray,
+        mol1_translation: np.ndarray,
+        mol2_rotations: np.ndarray,
+        mol2_translation: np.ndarray,
+        radial_translation_dir: np.ndarray,
+        radial_displacements: np.ndarray,
+        input_structure_file: str,
+        storage: Optional[Storage] = None,
+        dataset_name: Optional[str] = None,
+    ) -> Union[list[Atoms], tuple[list[Atoms], str]]:
+        """
+        Apply molecular rotations and translations to produce a dimer scan
+
+        Two molecules are independently rotated, possibly translated by a fixed
+        offset, then the scan geometries are generated over a range of
+        displacements at each rotation
+
+        :param mol1_rotations: array of nx3 rotation vectors specifiying
+            rotation in degrees around x, y, z axes for molecule 1
+        :type mol1_rotations: np.ndarray
+        :param mol1_translation: vector of size (3,) to apply consistent
+            displacement for molecule 1
+        :type mol1_translation: np.ndarray
+        :param mol2_rotations: array of nx3 rotation vectors specifiying
+            rotation in degrees around x, y, z axes for molecule 2
+        :type mol2_rotations: np.ndarray
+        :param mol2_translation: vector of size (3,) to apply consistent
+            displacement for molecule 2
+        :type mol2_translation: np.ndarray
+        :param radial_translation_dir: vector of size (3,) specifying the
+            direction for molecules to be displaced over the scan interval.
+            Does not need to be normalized
+        :type radial_translation_dir: np.ndarray
+        :param radial_displacements: vector of size (n,) specifying the
+            magnitude (Å) of displacements to iterate over for the dimer scan
+        :type radial_displacements: np.ndarray
+        :param input_structure_file: structured lammps file defining the
+            molecules to operate on. NOTE: Input structures will be read in
+            assuming 'real' units.
+        :type input_structure_file: str
+        :param storage: Storage module to save the dimers. Dimers will simply
+            be returned in memory if storage is not set
+        :type storage: Storage
+        :param dataset_name: Name of the dataset dimers should be saved to.
+            Only used if storage is also set. If storage is set but
+            dataset_name is not provided, a name will be auto-assigned.
+        :type dataset_name: str
+        :returns: list of Atoms objects for the generated configurations. If
+            storage is set, also returns the dataset ID
+        :rtype: list Atoms or tuple of list of Atoms and string
+        """
+        # enforce 2d shape even for length 1
+        mol1_rotations = mol1_rotations.reshape(-1, 3)
+        mol2_rotations = mol2_rotations.reshape(-1, 3)
+        if mol1_rotations.shape[0] > 1 and mol2_rotations.shape[0] > 1:
+            raise ValueError('Only 1 molecule can be rotated but '
+                             f'{mol1_rotations.shape[0]} rotations set for '
+                             f'mol1 and {mol2_rotations.shape[0]} rotations '
+                             'set for mol2')
+        # ensure translation vectors are right shape
+        if mol1_translation.shape != (3, ) or mol2_translation.shape != (
+                3, ) or radial_translation_dir.shape != (3, ):
+            try:
+                mol1_translation = mol1_translation.reshape(3, )
+                mol2_translation = mol2_translation.reshape(3, )
+                radial_translation_dir = radial_translation_dir.reshape(3, )
+            except ValueError:
+                raise ValueError(
+                    'molecule translations vectors must be of shape (3,)')
+        # generate the radial displacement vectors
+        radial_translation_dir = radial_translation_dir / np.linalg.norm(
+            radial_translation_dir)
+        radial_vecs = radial_displacements.reshape(
+            -1, 1) @ radial_translation_dir.reshape(1, -1)
+        print('Generating structures for:\n'
+              f'  {mol1_rotations.shape[0]} mol1 rotations\n'
+              f'  {mol2_rotations.shape[0]} mol2 rotations\n'
+              f'  {radial_vecs.shape[0]} radial displacements')
+        # read in the input structures
+        atoms = read(input_structure_file, format='lammps-data', units='real')
+        input_path = os.path.abspath(input_structure_file)
+        # ensure mol-id is present
+        if 'mol-id' not in atoms.arrays:
+            # generally second column in Atoms block, increment from 1
+            raise RuntimeError(
+                "LAMMPS data file must have 'mol-id' in Atoms arrays")
+        # ensure type is present
+        if 'type' not in atoms.arrays:
+            # generally third column in Atoms block, corresponds to Masses IDs
+            raise RuntimeError(
+                "LAMMPS data file must have 'type' in Atoms arrays")
+        # rename mol-id and type to internal names
+        for arr, new_arr in zip(['mol-id', 'type'],
+                                [MOL_ID_KEY, SITE_TYPE_KEY]):
+            atoms.set_array(new_arr, atoms.arrays.pop(arr))
+
+        # separate molecules
+        mol1 = get_molecule_atoms(atoms, 1)
+        mol2 = get_molecule_atoms(atoms, 2)
+
+        # apply rotation and translation to each molecule
+        mol1_orientations = []
+        for mol1_rot in mol1_rotations:
+            rot_mat1 = rotation_matrix_xyz(mol1_rot)
+            transformed_mol1 = apply_rotation_and_translation(
+                mol1.copy(), rot_mat1, mol1_translation)
+            mol1_orientations.append(transformed_mol1)
+        mol2_orientations = []
+        for mol2_rot in mol2_rotations:
+            rot_mat2 = rotation_matrix_xyz(mol2_rot)
+            transformed_mol2 = apply_rotation_and_translation(
+                mol2.copy(), rot_mat2, mol2_translation)
+            mol2_orientations.append(transformed_mol2)
+
+        # make scan configs
+        all_configs = []
+        index = 0
+        for mol1_config, mol1_rot_vec in zip(mol1_orientations,
+                                             mol1_rotations):
+            for mol2_config, mol2_rot_vec in zip(mol2_orientations,
+                                                 mol2_rotations):
+                for radial_disp in radial_vecs:
+                    # Translate molecule 2 along scan direction
+                    disp_mol2 = mol2_config.copy()
+                    disp_mol2.positions += radial_disp
+                    # Combine molecules
+                    full_config = mol1_config + disp_mol2
+                    # record metadata
+                    config_info = {
+                        'radial_disp': radial_disp.tolist(),
+                        'mol1_rot': mol1_rot_vec.tolist(),
+                        'mol1_trans': mol1_translation.tolist(),
+                        'mol2_rot': mol2_rot_vec.tolist(),
+                        'mol2_trans': mol2_translation.tolist(),
+                        'frame_idx': index,
+                        'structure_datafile': input_path
+                    }
+                    full_config.info = {METADATA_KEY: config_info}
+                    all_configs.append(full_config)
+                    index += 1
+
+        if storage is None:
+            return all_configs
+        else:
+            # set property map for metadata and molecular structure data
+            storage.set_property_map(keys={
+                _['new_property_name']: _['new_map']
+                for _ in [METADATA_PROPERTY_MAP, MOL_PROPERTY_MAP]
+            }, )
+            if dataset_name is None:
+                dataset_name = storage.generate_dataset_name(
+                    'dimer_scan',
+                    f'{len(all_configs)}',
+                    check_uniqueness=True,
+                )
+                self.logger.info(f'No name provided, set to {dataset_name}')
+            metadata = {
+                'description': ('Dimer scan configurations generated from '
+                                f'{mol1_rotations.shape[0]} mol1 rotations, '
+                                f'{mol2_rotations.shape[0]} mol2 rotations, '
+                                f'{radial_vecs.shape[0]} radial displacements.'
+                                f' mol1 = {mol1.get_chemical_formula()}, mol2 '
+                                f'= {mol2.get_chemical_formula()}.')
+            }
+            dataset_id = storage.new_dataset(
+                dataset_name,
+                all_configs,
+                metadata,
+            )
+            return all_configs, dataset_id
+
+    def evaluate_dimer_configs_simulator(
+        self,
+        dimers: list[Atoms],
+        simulator: Simulator,
+        workflow: Workflow,
+        forcefield_file: str,
+        structure_data_file: str,
+        include_files: list[str],
+        simulator_template_file: Optional[str] = None,
+        job_details: Optional[dict[str, Any]] = None,
+    ) -> list[Atoms]:
+        """
+        Evaluate dimer energies with a simulator
+
+        Drive the simulator (LAMMPS) with the provided forcefield, structure,
+        and parameter files. Returns the list of dimers with evaluated energies
+
+        :param dimers: list of dimers to evaluate
+        :type dimers: list of Atoms
+        :param simulator: simulator to drive the evaluation
+        :type simulator: Simulator
+        :param workflow: Workflow to manage the calculations
+        :type workflow: Workflow
+        :param forcefield_file: force field style file
+        :type forcefield_file: str
+        :param structure_data_file: structure definition file
+        :type structure_data_file: str
+        :param include_files: list of extra files that must be included
+        :type include_files: list of str
+        :returns: list of the input dimers with energy evaluated by simulator
+        :rtype: list[Atoms]
+        """
+        if simulator_template_file is None:
+            source_file_location = os.path.dirname(os.path.abspath(__file__))
+            simulator_template_file = (f'{source_file_location}/templates/'
+                                       'lammps_dimer_template.lmp')
+        if include_files is not None and not isinstance(include_files, list):
+            include_files = [include_files]
+
+        if self.current_method == 'dimer_simulator-waiting':
+            calc_id = self.outstanding_jobs
+        else:
+            # write the structures out
+            # this will be done by writing a separate dump file that the input
+            # script will read from
+            simulator.external_setup = True
+
+            def _dimer_simulator_setup(run_path):
+                structure_dump_file = os.path.join(run_path, 'all_dimers.dump')
+                write_lammps_dump(structure_dump_file, dimers)
+
+            simulator.external_func = _dimer_simulator_setup
+
+            # forcefield, structure data, and include files needed for
+            # simulation
+            simulation_files = [forcefield_file, structure_data_file]
+            simulation_files += include_files
+            # get names for template replacement
+            ff_file = os.path.basename(forcefield_file)
+            struct_file = os.path.basename(structure_data_file)
+            inc_files = []
+            for inc_file_path in include_files:
+                inc_files.append(os.path.basename(inc_file_path))
+            # input args defines the template content
+            input_args = {
+                'force_field_file': ff_file,
+                'structure_data_file': struct_file,
+                'include_files': inc_files,
+                'num_structs': range(1,
+                                     len(dimers) + 1),
+                'dump_file_name': 'all_dimers.dump',
+            }
+
+            if job_details is None:
+                job_details = {}
+
+            calc_id = simulator.run(
+                'dimer_scan',
+                simulation_files,
+                input_args,
+                input_template=simulator_template_file,
+                workflow=workflow,
+                job_details=job_details,
+            )
+            self.current_method = 'dimer_simulator-waiting'
+            self.outstanding_jobs = calc_id
+            self.checkpoint_augmentor()
+
+        # wait for the job to finish
+        workflow.block_until_completed(calc_id)
+
+        # parse the output
+        run_path = workflow.get_job_path(calc_id)
+        lammps_log = AnalyzeLammpsLog(f'{run_path}/lammps.out')
+        units = lammps_log.get_units()
+        energies = lammps_log.get('TotEng')
+        # x-axis is rotation
+        # y-axis is separation
+        # color is energy
+        parsed_data_rows = []
+        for config, energy in zip(dimers, energies):
+            row_dict = {
+                k: tuple(config.info[METADATA_KEY][k])
+                for k in ['mol1_rot', 'mol2_rot', 'radial_disp']
+            }
+            # ensure energy is in the correct units
+            converted_energy = convert_field_units_lammps(
+                energy,
+                'energy',
+                units,
+                'real',
+            )
+            row_dict |= {'energy': converted_energy}
+            parsed_data_rows.append(row_dict)
+            config.info[ENERGY_KEY] = energy
+        parsed_data = pd.DataFrame(parsed_data_rows)
+
+        self._plot_energy_surface(parsed_data, run_path)
+        self.current_method = 'dimer_simulator-done'
+        self.outstanding_jobs = None
+        self.checkpoint_augmentor()
+        return dimers
+
+    def evaluate_dimer_configs_oracle(
+        self,
+        dimers: list[Atoms],
+        oracle: Oracle,
+        workflow: Workflow,
+        input_args: dict[str, Any],
+        job_details: Optional[dict[str, Any]] = None,
+    ) -> list[Atoms]:
+        """
+        Evaluate dimer energies with an Oracle
+
+        Evaluate dimer structures with an Oracle, parsing output and
+        generating the surface energy plot at the end
+
+        :param dimers: list of dimers to evaluate
+        :type dimers: list of Atoms
+        :param oracle: oracle to evaluate the dimers with
+        :type oracle: Oracle
+        :param workflow: Workflow to manage the calculations
+        :type workflow: Workflow
+        :param input_args: dcitionary of oracle settings
+        :type input_args: dict
+        :param job_details: dictionary of optional job details for the oracle
+            calculations
+        :type job_details: dict
+        :returns: list of the input dimers with parsed oracle data (energy,
+            forces, stress)
+        :rtype: list[Atoms]
+        """
+        if self.current_method == 'dimer_oracle-waiting':
+            calc_ids = self.outstanding_jobs
+        else:
+            calc_ids = oracle.run(
+                'dimer_oracle_eval',
+                input_args,
+                dimers,
+                workflow=workflow,
+                job_details=job_details,
+            )
+            self.current_method = 'dimer_oracle-waiting'
+            self.outstanding_jobs = calc_ids
+            self.checkpoint_augmentor()
+
+        workflow.block_until_completed(calc_ids)
+
+        # parse the output, we don't need to save the calculation params
+        parsed_dimers, _ = oracle.data_from_calc_ids(calc_ids, workflow)
+
+        # use the last calculation as the save path?
+        run_path = workflow.get_job_path(calc_ids[-1])
+
+        # x-axis is rotation
+        # y-axis is separation
+        # color is energy
+        parsed_data_rows = []
+        ev2kcalmol = 23.06  # unit conversion - oracles should always be in eV
+        for config in parsed_dimers:
+            row_dict = {
+                k: tuple(config.info[METADATA_KEY][k])
+                for k in ['mol1_rot', 'mol2_rot', 'radial_disp']
+            }
+            row_dict |= {'energy': config.info[ENERGY_KEY] * ev2kcalmol}
+            parsed_data_rows.append(row_dict)
+        parsed_data = pd.DataFrame(parsed_data_rows)
+
+        self._plot_energy_surface(parsed_data, run_path)
+        self.current_method = 'dimer_oracle-done'
+        self.outstanding_jobs = None
+        self.checkpoint_augmentor()
+        return parsed_dimers
+
+    def _plot_energy_surface(
+        self,
+        parsed_data: pd.DataFrame,
+        save_location: str,
+    ):
+        """
+        Generate a plot of the potential energy surface from a dimer scan
+
+        :param parsed_data: dataframe including 'mol1_rot', 'mol2_rot',
+            'radial_disp', and 'energy' columns to plot from. Energy data
+            should be provided in units kcal/mol
+        :type parsed_data: DataFrame
+        :param save_location: where the plot should be saved
+        :type save_location: str
+        """
+        # see if mol1 or mol2 is rotated
+        num_mol1_rots = parsed_data['mol1_rot'].nunique()
+        num_mol2_rots = parsed_data['mol2_rot'].nunique()
+        if num_mol1_rots > 1 and num_mol2_rots == 1:
+            multiple_key = 'mol1_rot'
+        elif num_mol2_rots > 1 and num_mol1_rots == 1:
+            multiple_key = 'mol2_rot'
+        elif num_mol1_rots == 1 and num_mol2_rots == 1:
+            multiple_key = None
+        else:
+            raise RuntimeError('Only one molecule can be rotated')
+
+        # Extract data
+        displacements = parsed_data['radial_disp'].values
+        displacements = [np.linalg.norm(x) for x in displacements]
+        reference_idx = displacements.index(np.max(displacements))
+        energies = parsed_data['energy'].values
+        ref_energy = energies[reference_idx]
+
+        if multiple_key is None:
+            # make 1D plot
+            fig, ax = plt.subplots(figsize=(5, 5))
+            energies -= ref_energy
+            ax.scatter(displacements, energies, ls='-')
+
+            # Axis settings
+            ax.set_xlabel(r'$R_{CM}$ (Å)')
+            ax.set_ylabel(r'$\Delta E$ (kcal/mol)')
+
+            plt.tight_layout()
+            plt.savefig(f'{save_location}/energy_surface.png')
+
+        else:
+            # make 2D plot
+            # Extract rotation data
+            rotations = parsed_data[multiple_key].values
+            rot_lists = [[x[i] for x in rotations] for i in range(3)]
+            rot_sets = [set(x) for x in rot_lists]
+            rot_set_sizes = [len(x) for x in rot_sets]
+            # determine which axis rotation is about
+            if (rot_set_sizes.count(1) == 2
+                    and sum(size > 1 for size in rot_set_sizes) == 1):
+                max_rot_set_idx = np.argmax(rot_set_sizes)
+            else:
+                raise RuntimeError('Cannot deal with complex rotations')
+
+            # Define grid
+            xi, yi = np.meshgrid(
+                np.sort(list(set(rot_lists[max_rot_set_idx]))),
+                np.sort(list(set(displacements))),
+            )
+            zi = parsed_data.pivot(index='radial_disp',
+                                   columns=multiple_key,
+                                   values='energy').values - ref_energy
+
+            # Plot
+            fig, ax = plt.subplots(figsize=(5, 5))
+            cmap = plt.get_cmap('bwr')  # blue-white-red
+            surf = ax.pcolormesh(
+                xi,
+                yi,
+                zi,
+                cmap=cmap,
+                shading='auto',
+                vmin=-5,
+                vmax=5,
+            )
+
+            # Axis settings
+            ax.set_xlabel(r'$\theta$ (deg.)')
+            ax.set_ylabel(r'$R_{CM}$ (Å)')
+
+            # Colorbar
+            cbar = fig.colorbar(surf)
+            cbar.set_label(r'$\Delta E$ (kcal/mol)')
+
+            plt.tight_layout()
+            plt.savefig(f'{save_location}/energy_surface.png')

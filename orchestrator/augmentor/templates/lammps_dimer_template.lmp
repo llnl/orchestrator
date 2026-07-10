@@ -1,0 +1,36 @@
+# General Parameters
+units			real
+boundary		p p p
+
+# Set Force Field Style
+include         {{ force_field_file }}
+
+# Get Datafile
+read_data       {{ structure_data_file }}
+
+# FF Parameters
+{% for include_file in include_files %}
+include         {{ include_file }}
+{% endfor %}
+
+# Set Wolf Electrostatics
+pair_coeff      *   *   coul/wolf
+
+# Pairwise Exclusions
+special_bonds   lj/coul 0.0 0.0 1.0
+
+# Neighbor List Parameters
+neighbor        2.0 bin
+neigh_modify    delay 0 every 1 check yes
+
+# DUMP SETUP
+thermo_style 	custom step etotal
+thermo 		    1
+
+# SIMULATION SETUP
+{% for struct_num in num_structs %}
+read_dump {{ dump_file_name }}       {{ struct_num }} x y z
+fix 1 all nve
+run 0
+unfix 1
+{% endfor %}
