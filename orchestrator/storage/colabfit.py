@@ -19,6 +19,7 @@ from datetime import datetime
 import json
 import subprocess as sp
 from os import system
+import re
 import numpy as np
 from ase import Atoms
 from ase.data import chemical_symbols
@@ -183,6 +184,7 @@ class ColabfitStorage(Storage):
         dataset_metadata: Optional[dict] = None,
         updated_description: Optional[str] = None,
         updated_authors: Optional[list[str]] = None,
+        rename_properties: bool = True,
     ) -> str:
         """
         Add new configurations (and associated properties) to the db.
@@ -207,6 +209,11 @@ class ColabfitStorage(Storage):
             description
         :param updated_authors: If not None, will also update the dataset
             authors
+        :param rename_properties: whether to rename properties based upon
+            previous dataset's property map. Useful to keep consistent naming
+            when adding data to dataset. Will pass to the retrieval of data
+            from the provided dataset handle. Defaults to True, which assumes
+            new data has same map as old.
         :returns: handle for the dataset which includes the new additions
         """
 
@@ -217,8 +224,9 @@ class ColabfitStorage(Storage):
         # get existing data
         existing_data = self.get_data(
             dataset_id,
-            rename_properties=True,  # assume new data has same map as old
-            return_dataset_info=False)
+            rename_properties=rename_properties,
+            return_dataset_info=False,
+        )
         existing_property_map = self.get_dataset_property_map(dataset_id)
         len_new_data = len(data)
         data.extend(existing_data)
@@ -634,7 +642,8 @@ class ColabfitStorage(Storage):
         properties: Optional[str] = None,
         elements: Optional[str] = None,
         elements_exact: Optional[bool] = False,
-    ):
+        capture_output: Optional[bool] = False,
+    ) -> None | list[dict]:
         """
         Utility function to query the database
 
@@ -659,6 +668,11 @@ class ColabfitStorage(Storage):
         :param elements_exact: whether to restrict element search to return
             datasets containing only specified elements |default| ``False``
         :type elements_exact: bool
+        :param capture_output: whether or not to capture output. If true,
+            will return a list of dictionaries corresponding to query
+            matches. |default| ``False``
+        :type capture_output: bool
+        :returns: None or list of matched dictionaries if capture_output = True
         """
         colabfit_query_installed = system(
             'which colabfit 1> /dev/null 2> /dev/null')
@@ -667,21 +681,54 @@ class ColabfitStorage(Storage):
                 "Only one of dataset_handle and text should be used.")
         query = ""
         if text is not None:
-            query += f"-t '{text}' "
+            query += f'-t "{text}" '
         if properties is not None:
-            query += f"-p '{properties}' "
+            query += f'-p "{properties}" '
         if elements is not None:
             if elements_exact:
-                query += f"-ee '{elements}'"
+                query += f'-ee "{elements}"'
             else:
-                query += f"-e '{elements}'"
+                query += f'-e "{elements}"'
         if colabfit_query_installed == 0:
             if dataset_handle is None:
-                system(f'{self.query_string} {query}')
+                full_query = f'{self.query_string} {query}'
             else:
-                system(f'{self.query_string} -t "{dataset_handle}" {query}')
+                full_query = (f'{self.query_string} -t'
+                              + f'"{dataset_handle}" {query}')
+            query_output = sp.run(full_query.split(),
+                                  capture_output=capture_output)
+            if capture_output:
+                split_outputs = query_output.stdout.split(b"\n-----")[1:-1]
+                # first entry is preface, final is terminating line
+                output_dicts = []
+                for output_binary in split_outputs:
+                    try:
+                        cleaned_output = self._clean_output_dictionary_binary(
+                            output_binary)
+                        output_dicts.append(json.loads(cleaned_output))
+                    except Exception as err:
+                        print(f"{repr(err)} \n Could not parse output"
+                              + f"{output_binary} to dictionary")
+                return output_dicts
         else:
             self.logger.info('Error: cfkit-cli must be installed to list data')
+
+    def _clean_output_dictionary_binary(self, output_binary: bytes) -> bytes:
+        # merge broken quotations into single line
+        # testing
+        output_binary = re.sub(rb"[\'\"]\s*\n\s*[\'\"]", b"", output_binary)
+        # replace initial double quotes with double espaced quotes
+        # necessary for nested json strings where the payload is itself
+        # a separate JSON
+        output_binary = re.sub(b'"', b'\\\\"', output_binary)
+        # force internal quotations to be double-quotes
+        # no boundary hyphens
+        cleaned_output = output_binary.replace(b"'", b'"').strip(b"-")
+        # remove double-escaped (and triply-escaped) items
+        cleaned_output = (cleaned_output.replace(b"\n", b""))
+        while b"\\\\" in cleaned_output:
+            cleaned_output = cleaned_output.replace(b"\\\\", b"\\")
+        return cleaned_output
 
     def delete_dataset(
         self,
@@ -1113,11 +1160,25 @@ class ColabfitStorage(Storage):
         Also add energy, forces, and stress props
         """
         self.database_client.create_pg_tables()
-        from colabfit.tools.property_definitions import (energy_pd,
-                                                         atomic_forces_pd,
-                                                         cauchy_stress_pd)
-        self.define_new_properties(
-            [energy_pd, atomic_forces_pd, cauchy_stress_pd])
+        # native colabfit definitions
+        from colabfit.tools.property_definitions import (
+            energy_pd,
+            atomic_forces_pd,
+            cauchy_stress_pd,
+        )
+        # orchestrator specific definitions
+        from orchestrator.utils.data_standard import (
+            SELECTOR_PROPERTY_DEFINITION,
+            MOL_PROPERTY_DEFINITION,
+        )
+
+        self.define_new_properties([
+            energy_pd,
+            atomic_forces_pd,
+            cauchy_stress_pd,
+            SELECTOR_PROPERTY_DEFINITION,
+            MOL_PROPERTY_DEFINITION,
+        ])
 
     @staticmethod
     def sort_configurations(configs: list[Atoms]) -> list[Atoms]:
