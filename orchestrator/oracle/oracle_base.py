@@ -7,7 +7,7 @@ import re
 from ..workflow import Workflow, workflow_builder
 from ..storage import Storage
 from ..utils.recorder import Recorder
-from ..utils.exceptions import UnidentifiedPathError, DatasetDoesNotExistError
+from ..utils.exceptions import DatasetDoesNotExistError
 from ..utils.data_standard import METADATA_KEY
 
 
@@ -165,20 +165,10 @@ class Oracle(Recorder, ABC):
         if not isinstance(paths, list):
             raise TypeError('paths should be a list, instead received '
                             f'{type(paths).__name__}')
-        if isinstance(paths[0], int):
-            self.logger.info('Supplied paths are calc IDs, extracting paths')
-            data_paths = []
-            existing_metadata = []
-            for id in paths:
-                data_paths.append(workflow.get_job_path(id))
-                existing_metadata.append(workflow.get_attached_metadata(id))
-        elif '/' in paths[0] or '.' in paths[0]:
-            self.logger.info('Reading explicit paths for labeling configs')
-            data_paths = paths
-            existing_metadata = [{} for _ in range(len(paths))]
-        else:
-            raise UnidentifiedPathError(
-                'Supplied paths are not in a recognized format')
+
+        # Use workflow method to resolve paths and metadata
+        data_paths, existing_metadata = workflow.resolve_calc_paths(
+            paths, allow_paths=True)
 
         self.logger.info((f'Labelling {len(data_paths)} '
                           f'{self.__class__.__name__} calculations'))
@@ -348,10 +338,12 @@ class Oracle(Recorder, ABC):
         pass
 
     @abstractmethod
-    def parse_for_storage(self,
-                          run_path: str = '',
-                          calc_id: int = None,
-                          workflow: Workflow = None) -> Atoms:
+    def parse_for_storage(
+        self,
+        run_path: str = '',
+        calc_id: Union[int, str] = None,
+        workflow: Workflow = None,
+    ) -> Atoms:
         """
         process calculation output to extract data in a consistent format
 
@@ -362,7 +354,9 @@ class Oracle(Recorder, ABC):
         eV/A^3
 
         :param run_path: directory where the oracle output file resides.
-        :param calc_id: Job ID of the calculation to parse.
+            If not provided, will be extracted from the workflow using calc_id.
+        :param calc_id: Calculation ID to look up via workflow.get_job_path().
+            Can be int or str depending on workflow implementation.
         :param workflow: Workflow object of Orchestrator.
         :returns: Atoms of the configurations with attached properties and
             metadata.

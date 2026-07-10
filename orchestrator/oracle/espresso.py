@@ -176,10 +176,12 @@ class EspressoOracle(Oracle):
                    f'-nband {nband} < {input_file} > {self.output_filename}')
         return command
 
-    def parse_for_storage(self,
-                          run_path: str = '',
-                          calc_id: int = None,
-                          workflow: Workflow = None) -> Atoms:
+    def parse_for_storage(
+        self,
+        run_path: str = '',
+        calc_id: Union[int, str] = None,
+        workflow: Workflow = None,
+    ) -> Atoms:
         """
         process calculation output to extract data in a consistent format
 
@@ -189,8 +191,10 @@ class EspressoOracle(Oracle):
         energy in eV, forces on each atom in eV/A, and stress on the system in
         eV/A^3
 
-        :param run_path: directory where the oracle output file resides
-        :param calc_id: Job ID of the calculation to parse.
+        :param run_path: directory where the oracle output file resides.
+            If not provided, will be extracted from the workflow using calc_id.
+        :param calc_id: Calculation ID to look up via workflow.get_job_path().
+            Can be int or str depending on workflow implementation.
         :param workflow: Workflow object of Orchestrator.
         :returns: Atoms of the configuration and attached properties and a
             dictionary of metadata that should be stored with the

@@ -103,7 +103,7 @@ class KIMOracle(Oracle):
     def parse_for_storage(
         self,
         run_path: str = '',
-        calc_id: int = None,
+        calc_id: Union[int, str] = None,
         workflow: Workflow = None,
     ) -> Atoms:
         """
@@ -114,8 +114,10 @@ class KIMOracle(Oracle):
         possibly energies, forces, and stresses. Units are: total system energy
         in eV, forces on each atom in eV/A, and stress on the system in eV/A^3
 
-        :param run_path: directory where the oracle output file resides
-        :param calc_id: Calculation ID returned from an Oracle.
+        :param run_path: directory where the oracle output file resides.
+            If not provided, will be extracted from the workflow using calc_id.
+        :param calc_id: Calculation ID to look up via workflow.get_job_path().
+            Can be int or str depending on workflow implementation.
         :param workflow: Workflow object from orchestrator that has attached
             metadata.
         :returns: Atoms of the configuration and attached properties and a

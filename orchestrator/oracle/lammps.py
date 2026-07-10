@@ -200,7 +200,7 @@ class LAMMPSKIMOracle(LAMMPSOracle):
     def parse_for_storage(
         self,
         run_path: str = '',
-        calc_id: int = None,
+        calc_id: Union[int, str] = None,
         workflow: Workflow = None,
     ) -> Atoms:
         """
@@ -211,8 +211,10 @@ class LAMMPSKIMOracle(LAMMPSOracle):
         energies, forces, and stresses. Units are: total system energy in eV,
         forces on each atom in eV/A, and stress on the system in eV/A^3
 
-        :param run_path: directory where the oracle output file resides
-        :param calc_id: Calculation ID returned from an Oracle.
+        :param run_path: directory where the oracle output file resides.
+            If not provided, will be extracted from the workflow using calc_id.
+        :param calc_id: Calculation ID to look up via workflow.get_job_path().
+            Can be int or str depending on workflow implementation.
         :param workflow: Workflow object from orchestrator that has attached
             metadata.
         :returns: Atoms of the configuration and attached properties and a
@@ -363,7 +365,12 @@ class LAMMPSSnapOracle(LAMMPSOracle):
         self.logger.info(f'LAMMPS config file written to {run_path}')
         return 'lammps.in'
 
-    def parse_for_storage(self, run_path: str) -> Atoms:
+    def parse_for_storage(
+        self,
+        run_path: str = '',
+        calc_id: Union[int, str] = None,
+        workflow: Workflow = None,
+    ) -> Atoms:
         """
         process calculation output to extract data in a consistent format
 
@@ -372,13 +379,17 @@ class LAMMPSSnapOracle(LAMMPSOracle):
         energies, forces, and stresses. Units are: total system energy in eV,
         forces on each atom in eV/A, and stress on the system in eV/A^3
 
-        :param run_path: directory where the oracle output file resides
-        :type run_path: str
+        :param run_path: directory where the oracle output file resides.
+            If not provided, will be extracted from the workflow using calc_id.
+        :param calc_id: Calculation ID to look up via workflow.get_job_path().
+            Can be int or str depending on workflow implementation.
+        :param workflow: Workflow object of Orchestrator.
         :returns: Atoms of the configuration and attached properties and a
             dictionary of metadata that should be stored with the
             configuration.
-        :rtype: Atoms
         """
+        if not run_path:
+            run_path = workflow.get_job_path(calc_id)
         # ASE cannot read the lammps output file with energy and stress data
         # grab the thermo line from lammps.out for energy and stress
         pattern_thermo = 'PotEng '
