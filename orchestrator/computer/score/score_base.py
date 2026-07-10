@@ -209,7 +209,7 @@ class ScoreBase(Computer):
                            desc='Computing...',
                            disable=not verbose):
             run_path = workflow.make_path(module_name, path_type)
-            self.write_input(run_path, compute_args,
+            self.write_input(run_path, deepcopy(compute_args),
                              [configs[i] for i in frames])
             modified_job_details = deepcopy(job_details)
             if isinstance(configs[0], Atoms):
@@ -428,22 +428,32 @@ class AtomCenteredScore(ScoreBase):
 
     def parse_for_storage(
         self,
-        run_path: str,
+        run_path: str = '',
         cleanup: bool = True,
+        calc_id: Union[int, str] = None,
+        workflow: Workflow = None,
     ) -> list[Atoms]:
         """
         Process calculation output to extract data in a consistent format, then
         run cleanup() to remove any unnecessary temporary files.
 
-        :param run_path: directory where the output file resides
+        :param run_path: directory where the output file resides.
+            If not provided, will be extracted from the workflow using calc_id.
         :type run_path: str
         :param cleanup: a flag indicating whether to delete the temporary
             files. |default| ``True``
         :type cleanup: bool
+        :param calc_id: Calculation ID to look up via workflow.get_job_path().
+            Can be int or str depending on workflow implementation.
+        :type calc_id: int or str
+        :param workflow: Workflow object of Orchestrator.
+        :type workflow: Workflow
         :returns: Atoms of the configurations with attached properties and
             metadata
         :rtype: list of Atoms
         """
+        if not run_path:
+            run_path = workflow.get_job_path(calc_id)
         data_file = os.path.join(run_path, self.output_file_name)
 
         results = self.read_data(data_file)
@@ -548,22 +558,32 @@ class ConfigurationScore(ScoreBase):
 
     def parse_for_storage(
         self,
-        run_path: str,
+        run_path: str = '',
         cleanup: bool = True,
+        calc_id: Union[int, str] = None,
+        workflow: Workflow = None,
     ) -> list[Atoms]:
         """
         Process calculation output to extract data in a consistent format, then
         run cleanup() to remove any unnecessary temporary files.
 
-        :param run_path: directory where the output file resides
+        :param run_path: directory where the output file resides.
+            If not provided, will be extracted from the workflow using calc_id.
         :type run_path: str
         :param cleanup: a flag indicating whether to delete the temporary
             files. |default| ``True``
         :type cleanup: bool
+        :param calc_id: Calculation ID to look up via workflow.get_job_path().
+            Can be int or str depending on workflow implementation.
+        :type calc_id: int or str
+        :param workflow: Workflow object of Orchestrator.
+        :type workflow: Workflow
         :returns: Atoms of the configurations with attached properties and
             metadata
         :rtype: list of Atoms
         """
+        if not run_path:
+            run_path = workflow.get_job_path(calc_id)
         data_file = os.path.join(run_path, self.output_file_name)
 
         results = self.read_data(data_file)
@@ -645,22 +665,32 @@ class DatasetScore(ScoreBase):
 
     def parse_for_storage(
         self,
-        run_path: str,
+        run_path: str = '',
         cleanup: bool = True,
+        calc_id: Union[int, str] = None,
+        workflow: Workflow = None,
     ) -> list[Atoms]:
         """
         Process calculation output to extract data in a consistent format, then
         run cleanup() to remove any unnecessary temporary files.
 
-        :param run_path: directory where the output file resides
+        :param run_path: directory where the output file resides.
+            If not provided, will be extracted from the workflow using calc_id.
         :type run_path: str
         :param cleanup: a flag indicating whether to delete the temporary
             files. |default| ``True``
         :type cleanup: bool
+        :param calc_id: Calculation ID to look up via workflow.get_job_path().
+            Can be int or str depending on workflow implementation.
+        :type calc_id: int or str
+        :param workflow: Workflow object of Orchestrator.
+        :type workflow: Workflow
         :returns: Atoms of the configurations with attached properties and
             metadata
         :rtype: list of np.ndarray
         """
+        if not run_path:
+            run_path = workflow.get_job_path(calc_id)
         data_file = os.path.join(run_path, self.output_file_name)
         with open(data_file, 'r') as f:
             results = json.load(f)
@@ -832,19 +862,33 @@ class ModelScore(ScoreBase):
         with open(os.path.join(save_dir, self.output_file_name), 'w') as f:
             json.dump(output_dict, f, indent=4)
 
-    def parse_for_storage(self, run_path: str, cleanup: bool = True) -> dict:
+    def parse_for_storage(
+        self,
+        run_path: str = '',
+        cleanup: bool = True,
+        calc_id: Union[int, str] = None,
+        workflow: Workflow = None,
+    ) -> dict:
         """
         Process calculation output to extract data in a consistent format, then
         run cleanup() to remove any unnecessary temporary files.
 
-        :param run_path: directory where the output file resides
+        :param run_path: directory where the output file resides.
+            If not provided, will be extracted from the workflow using calc_id.
         :type run_path: str
         :param cleanup: a flag indicating whether to delete the temporary
             files. |default| ``True``
         :type cleanup: bool
+        :param calc_id: Calculation ID to look up via workflow.get_job_path().
+            Can be int or str depending on workflow implementation.
+        :type calc_id: int or str
+        :param workflow: Workflow object of Orchestrator.
+        :type workflow: Workflow
         :returns: A dictionary with the score value(s) and metadata
         :rtype: dict
         """
+        if not run_path:
+            run_path = workflow.get_job_path(calc_id)
         with open(os.path.join(run_path, self.output_file_name), 'r') as f:
             results = json.load(f)
 

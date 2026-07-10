@@ -649,9 +649,7 @@ class FIMTrainingSetScore(ConfigurationScore):
         """
         return self.transform.inverse_transform(params)
 
-    def get_colabfit_property_definition(self,
-                                         score_quantity: Optional[str] = None
-                                         ) -> dict:
+    def get_colabfit_property_definition(self) -> dict:
         return {
             'property-name': self.OUTPUT_KEY,
 

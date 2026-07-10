@@ -4,7 +4,7 @@ from ase import Atoms
 from .descriptor_base import AtomCenteredDescriptor
 from orchestrator.utils.data_standard import METADATA_KEY
 
-from typing import Optional, Union, Any
+from typing import Union, Any
 
 from kliff.legacy.descriptors import SymmetryFunction, Bispectrum
 from kliff.dataset import Configuration
@@ -114,9 +114,7 @@ class KLIFFDescriptor(AtomCenteredDescriptor):
 
         return results
 
-    def get_colabfit_property_definition(self,
-                                         name: Optional[str] = None
-                                         ) -> dict[str, Any]:
+    def get_colabfit_property_definition(self) -> dict[str, Any]:
         return {
             'property-id': 'tag:staff@noreply.colabfit.org,2024-12-09:'
             f'property/{self.OUTPUT_KEY.replace("_", "-")}',
@@ -165,9 +163,7 @@ class KLIFFDescriptor(AtomCenteredDescriptor):
             },
         }
 
-    def get_colabfit_property_map(self,
-                                  name: Optional[str] = None
-                                  ) -> dict[str, dict[str, str]]:
+    def get_colabfit_property_map(self) -> dict[str, dict[str, str]]:
         return {
             'descriptors': {
                 'field': self.OUTPUT_KEY + "_descriptors",

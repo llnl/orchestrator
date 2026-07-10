@@ -111,22 +111,7 @@ class QUESTSEfficiencyScore(DatasetScore):
 
         return np.array([efficiency])
 
-    def get_colabfit_property_definition(
-        self,
-        score_quantity: int,
-    ) -> dict[str, Any]:
-
-        if isinstance(score_quantity, str):
-            score_quantity = ScoreQuantity[
-                score_quantity]  # Enum conversion uses []
-
-        if score_quantity not in self.supported_score_quantities:
-            raise RuntimeError(
-                f"Requested compute value '{score_quantity}' is "
-                "not supported by '{self.__class__.__name__}'."
-                " Supported quantities are "
-                "'{self.supported_score_quantities}'")
-
+    def get_colabfit_property_definition(self) -> dict[str, Any]:
         return {
             'property-id': 'tag:staff@noreply.colabfit.org,2024-12-09:'
             f'property/{self.OUTPUT_KEY.replace("_", "-")}',
@@ -254,22 +239,7 @@ class QUESTSDiversityScore(DatasetScore):
 
         return np.array(diversity(x, h=bandwidth, batch_size=batch_size))
 
-    def get_colabfit_property_definition(
-        self,
-        score_quantity: int,
-    ) -> dict[str, Any]:
-
-        if isinstance(score_quantity, str):
-            score_quantity = ScoreQuantity[
-                score_quantity]  # Enum conversion uses []
-
-        if score_quantity not in self.supported_score_quantities:
-            raise RuntimeError(
-                f"Requested compute value '{score_quantity}' is "
-                "not supported by '{self.__class__.__name__}'."
-                " Supported quantities are "
-                "'{self.supported_score_quantities}'")
-
+    def get_colabfit_property_definition(self) -> dict[str, Any]:
         return {
             'property-id': 'tag:staff@noreply.colabfit.org,2024-12-09:'
             f'property/{self.OUTPUT_KEY.replace("_", "-")}',
@@ -487,22 +457,7 @@ class QUESTSDeltaEntropyScore(AtomCenteredScore):
 
         return np.array_split(results, np.cumsum(shapes)[:-1])
 
-    def get_colabfit_property_definition(
-        self,
-        score_quantity: int,
-    ) -> dict[str, Any]:
-
-        if isinstance(score_quantity, str):
-            score_quantity = ScoreQuantity[
-                score_quantity]  # Enum conversion uses []
-
-        if score_quantity not in self.supported_score_quantities:
-            raise RuntimeError(
-                f"Requested compute value '{score_quantity}' is "
-                "not supported by '{self.__class__.__name__}'."
-                " Supported quantities are "
-                "'{self.supported_score_quantities}'")
-
+    def get_colabfit_property_definition(self) -> dict[str, Any]:
         return {
             'property-id': 'tag:staff@noreply.colabfit.org,2024-12-09:'
             f'property/{self.OUTPUT_KEY.replace("_", "-")}',
@@ -559,22 +514,7 @@ class QUESTSDeltaEntropyScore(AtomCenteredScore):
             },
         }
 
-    def get_colabfit_property_map(
-        self,
-        score_quantity: int,
-    ) -> dict[str, Any]:
-
-        if isinstance(score_quantity, str):
-            score_quantity = ScoreQuantity[
-                score_quantity]  # Enum conversion uses []
-
-        if score_quantity not in self.supported_score_quantities:
-            raise RuntimeError(
-                f"Requested compute value '{score_quantity}' is "
-                "not supported by '{self.__class__.__name__}'."
-                " Supported quantities are "
-                "'{self.supported_score_quantities}'")
-
+    def get_colabfit_property_map(self) -> dict[str, Any]:
         return {
             'score': {
                 'field': self.OUTPUT_KEY + '_score',

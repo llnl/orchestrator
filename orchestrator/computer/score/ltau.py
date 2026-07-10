@@ -264,13 +264,7 @@ class LTAUForcesUQScore(AtomCenteredScore):
 
         return np.array_split(errors, np.cumsum(shapes)[:-1])
 
-    def get_colabfit_property_definition(
-        self,
-        score_quantity: Optional[str] = None,
-    ) -> dict[str, Any]:
-        # 'name' does not need to be provided here, since this module only has
-        # one supported output type
-
+    def get_colabfit_property_definition(self) -> dict[str, Any]:
         return {
             'property-id': 'tag:staff@noreply.colabfit.org,2024-12-09:'
             f'property/{self.OUTPUT_KEY.replace("_", "-")}',
@@ -344,10 +338,7 @@ class LTAUForcesUQScore(AtomCenteredScore):
             },
         }
 
-    def get_colabfit_property_map(
-        self,
-        score_quantity: Optional[str] = None,
-    ) -> dict[str, Any]:
+    def get_colabfit_property_map(self) -> dict[str, Any]:
         return {
             'score': {
                 'field': self.OUTPUT_KEY + '_score',

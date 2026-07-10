@@ -11,7 +11,7 @@ from typing import Optional, Union, Any
 from ..workflow.factory import workflow_builder
 from ..utils.isinstance import isinstance_no_import
 from ..utils.recorder import Recorder
-from ..utils.exceptions import UnidentifiedPathError, DatasetDoesNotExistError
+from ..utils.exceptions import DatasetDoesNotExistError
 from orchestrator.workflow import Workflow
 from orchestrator.storage import Storage
 
@@ -222,15 +222,27 @@ class Computer(Recorder, ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def parse_for_storage(self, run_path: str, cleanup: bool):
+    def parse_for_storage(
+        self,
+        run_path: str = '',
+        cleanup: bool = True,
+        calc_id: Union[int, str] = None,
+        workflow: Workflow = None,
+    ):
         """
         Process calculation output to extract data in a consistent format
 
-        :param run_path: directory where the output resides
+        :param run_path: directory where the output resides.
+            If not provided, will be extracted from the workflow using calc_id.
         :type run_path: str
         :param cleanup: a flag indicating whether to delete the temporary
             files. |default| ``True``
         :type cleanup: bool
+        :param calc_id: Calculation ID to look up via workflow.get_job_path().
+            Can be int or str depending on workflow implementation.
+        :type calc_id: int or str
+        :param workflow: Workflow object of Orchestrator.
+        :type workflow: Workflow
         :returns: depends upon implementation
         :rtype: depends upon implementation, but should always be a list
         """
@@ -308,16 +320,19 @@ class Computer(Recorder, ABC):
         with open(os.path.join(tmpdir, args_file_name), 'w') as f:
             json.dump(args, f, indent=4)
 
-    def data_from_calc_ids(self,
-                           data_pointers: list[int],
-                           workflow: Optional[Workflow] = None,
-                           cleanup: Optional[bool] = True) -> list[Any]:
+    def data_from_calc_ids(
+        self,
+        data_pointers: list[Union[int, str]],
+        workflow: Optional[Workflow] = None,
+        cleanup: Optional[bool] = True,
+    ) -> list[Any]:
         """
         Return the parsed data from a list of calculation IDs.
 
-        :param data_pointers: list of calc_ids for extracting to computed
-            results
-        :type data_pointers: list
+        :param data_pointers: list of calc_ids (int or str) for extracting
+            computed results. String calc_ids are supported for workflows like
+            Flux that use string job IDs.
+        :type data_pointers: list[Union[int, str]]
         :param workflow: the workflow for managing job submission, if none are
             supplied, will use the default workflow defined in this class
             |default| ``None``
@@ -331,21 +346,14 @@ class Computer(Recorder, ABC):
         if workflow is None:
             workflow = self.default_wf
 
-        if isinstance(data_pointers[0], int):
-            self.logger.info('Ensuring all calculations completed...')
-            workflow.block_until_completed(data_pointers)
-            self.logger.info('Supplied paths are calc IDs, extracting paths')
-            data_paths = []
-            existing_metadata = []
-            for id in data_pointers:
-                data_paths.append(workflow.get_job_path(id))
-                existing_metadata.append(workflow.get_attached_metadata(id))
-        elif isinstance(data_pointers[0], str):
-            raise UnidentifiedPathError('String paths are not supported.'
-                                        'Please provide calculation IDs.')
-        else:
-            raise UnidentifiedPathError(
-                'Supplied paths are not in a recognized format')
+        # Ensure all calculations completed before extracting
+        self.logger.info('Ensuring all calculations completed...')
+        workflow.block_until_completed(data_pointers)
+
+        # Use workflow method to resolve calc_ids to paths
+        # allow_paths=False means only calc_ids are accepted, not file paths
+        data_paths, existing_metadata = workflow.resolve_calc_paths(
+            data_pointers, allow_paths=False)
 
         self.logger.info((f'Extracting configs from {len(data_paths)} '
                           f'{self.__class__.__name__} calculations'))
@@ -359,9 +367,7 @@ class Computer(Recorder, ABC):
 
         return data
 
-    def get_colabfit_property_definition(self,
-                                         name: Optional[str] = None
-                                         ) -> dict[str, Any]:
+    def get_colabfit_property_definition(self) -> dict[str, Any]:
         """
         A 'property definition' is a dictionary used by the ColabFit storage
         module for exactly specifying the details (data type, shape,
@@ -369,17 +375,12 @@ class Computer(Recorder, ABC):
         property. This function must be implemented in order to support storage
         of the computed results in the ColabFit module.
 
-        :param name: the name of the property. Only needs to be provided if the
-            Computer can return multiple properties.
-        :type name: str
         :returns: the property definition
         :rtype: dict
         """
         raise NotImplementedError
 
-    def get_colabfit_property_map(self,
-                                  name: Optional[str] = None
-                                  ) -> dict[str, Any]:
+    def get_colabfit_property_map(self) -> dict[str, Any]:
         """
         Returns a default property map that can be used to extract a ColabFit
         property from an ASE.Atoms object. This assumes that the values being
@@ -393,9 +394,6 @@ class Computer(Recorder, ABC):
         in order to support storage of the computed results in the ColabFit
         module.
 
-        :param name: the name of the property. Only needs to be provided if the
-            Computer can return multiple properties.
-        :type name: str
         :returns: the property map
         :rtype: dict
         """

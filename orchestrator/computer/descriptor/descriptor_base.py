@@ -250,8 +250,10 @@ class DescriptorBase(Computer):
 
     def parse_for_storage(
         self,
-        run_path: str,
+        run_path: str = '',
         cleanup: bool = True,
+        calc_id: Union[int, str] = None,
+        workflow: Workflow = None,
     ) -> list[Atoms]:
         """
         Process calculation output as ASE Atoms, then clean up.
@@ -259,15 +261,23 @@ class DescriptorBase(Computer):
         Use ASE's read() function to parse the xyz file written by this module,
         then run cleanup() to remove any unnecessary temporary files.
 
-        :param run_path: directory where the output file resides
+        :param run_path: directory where the output file resides.
+            If not provided, will be extracted from the workflow using calc_id.
         :type run_path: str
         :param cleanup: a flag indicating whether to delete the temporary
             files. |default| ``True``
         :type cleanup: bool
+        :param calc_id: Calculation ID to look up via workflow.get_job_path().
+            Can be int or str depending on workflow implementation.
+        :type calc_id: int or str
+        :param workflow: Workflow object of Orchestrator.
+        :type workflow: Workflow
         :returns: Atoms of the configurations with attached properties and
             metadata
         :rtype: list of Atoms
         """
+        if not run_path:
+            run_path = workflow.get_job_path(calc_id)
         data_file = os.path.join(run_path, self.atoms_file_name)
 
         results = safe_read(data_file, format='extxyz', index=':')

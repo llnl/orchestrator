@@ -957,9 +957,7 @@ class FIMPropertyScore(ModelScore):
         with open(save_path, 'w') as f:
             json.dump(data, f, indent=4)
 
-    def get_colabfit_property_definition(self,
-                                         score_quantity: Optional[str] = None
-                                         ) -> dict:
+    def get_colabfit_property_definition(self) -> dict:
         return {
             'property-name': self.OUTPUT_KEY,
 
