@@ -1,0 +1,58 @@
+[BISPECTRUM]
+numTypes = {{ num_types }}
+twojmax = {{ two_j_max }}
+rcutfac = {{ rcutfac }}
+rfac0 = {{ rfac0 }}
+rmin0 = {{ rmin0 }}
+{% if wj is iterable and wj|length > 1 %}
+wj = {% for w in wj %}{{ w }} {% endfor %}
+{% else %}
+wj = {{ wj }}
+{% endif %}
+{% if radelem is iterable and radelem|length > 1 %}
+radelem = {% for r in radelem %}{{ r }} {% endfor %}
+{% else %}
+radelem = {{ radelem }}
+{% endif %}
+type = {{ types }}
+wselfallflag = {{ wselfallflag }}
+chemflag = {{ chemflag }}
+bzeroflag = {{ bzeroflag }}
+quadraticflag = {{ quadraticflag }}
+
+[CALCULATOR]
+calculator = LAMMPSSNAP
+energy = {{ train_energy }}
+force = {{ train_force }}
+stress = {{ train_stress }}
+
+[SOLVER]
+solver = SVD
+compute_testerrs = 1
+detailed_errors = 1
+
+[OUTFILE]
+output_style = SNAP
+metrics = {{ metrics_file }}
+potential = {{ potential_name }}
+
+[REFERENCE]
+units = {{ units }}
+atom_style = {{ atom_style }}
+{% if use_zbl %}
+pair_style = hybrid/overlay zero 10.0 zbl 4.0 4.8
+pair_coeff1 = * * zero
+pair_coeff2 = * * zbl {% for species_idx in species_atomic_numbers %}{{ species_idx }} {{ species_idx }} {% endfor %}
+{% else %}
+pair_style = zero 10.0
+pair_coeff = * *
+{% endif %}
+
+[EXTRAS]
+dump_descriptors = 0
+dump_truth = 0
+dump_weights = 0
+dump_dataframe = 0
+
+[MEMORY]
+override = 0

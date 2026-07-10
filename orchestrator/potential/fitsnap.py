@@ -1,921 +1,1744 @@
-import os
-import glob
-import itertools
-import periodictable
-import configparser
-from typing import List, Optional
-from .potential_base import Potential
+import numpy as np
 from fitsnap3lib.fitsnap import FitSnap
-from ..utils.restart import restarter
-from ..utils.exceptions import InstallPotentialError
+import os
+from ase import Atoms
+from typing import Optional, Union
+from .potential_base import Potential, ModelHyperparameters
+from .kim_mixins import KIMKitHandler
+from ..storage import Storage
+from ..workflow import Workflow
+from dataclasses import dataclass, asdict
 
 
-class FitSnapPotential(Potential):
+@dataclass
+class SNAPBispectrumModelHyperparameters(ModelHyperparameters):
     """
-    Build a potential using FitSnap
+    Hyperparameters for the SNAP Bispectrum Potential model.
 
-    All parameters defining the snap potential are defined in the
-    settings file described in the trainer_args dict.
-
-    NOTE: If building FitSNAP potentials as portable models, they will
-    default to the OpenKIM model driver SNAP__MD_536750310735_000,
-    which does not support explicit multielement potentials.
-    Potentials that wish to use explicit multielement speicies should be
-    saved as simulator-models instead.
-
-    :param trainer_args: dict with the input parameters and their values as k,v
-        pairs. Parameters include:
-    :param settings_path:
+    :param two_j_max: Maximum band for bispectrum components (2*j_max)
+    :param rfac0: Parameter controlling cutoff radius scaling
+    :param quadratic: Whether to use quadratic SNAP features
+    :param rmin0: Minimum cutoff radius
+    :param wj: Weight parameter for atoms or species
+    :param radelem: Atomic radius parameter for species
+    :param use_zbl: Whether to use ZBL potential for short-range interactions
+    :param wselfallflag: Self-weight flag (0 or 1)
+    :param chemflag: Chemical environment flag (0 or 1)
+    :param bzeroflag: B-zero flag (0 or 1)
     """
+    two_j_max: int
+    rfac0: float
+    quadratic: bool
+    rmin0: float
+    wj: Union[float, list[float]]
+    radelem: Union[float, list[float]]
+    use_zbl: bool
+    wselfallflag: int
+    chemflag: int
+    bzeroflag: int
+
+
+class SNAPPotential(Potential, KIMKitHandler):
+    """
+    Spectral Neighbor Analysis Potential (SNAP) implementation
+
+    The SNAPPotential class implements the SNAP potential, which uses
+    bispectrum components to represent the local atomic environment. This
+    implementation is designed to work with FitSNAP and LAMMPS.
+
+    The potential can be:
+    1. Initialized with explicit hyperparameters for training
+    2. Loaded from a template file
+    3. Loaded from existing parameter files (snapcoeff, snapparam, etc.)
+
+    SNAP potentials use a spectral decomposition of the neighbor density
+    function into 4D hyperspherical harmonics.
+    """
+
+    default_cutoff_radius = 4.67
+    default_rfac0 = 0.99363
+    default_two_j_max = 6
+    default_quadratic = False
+    default_rmin0 = 0.0
+    default_wj = 1.0
+    default_radelem = 0.5
+    default_use_zbl = False
+    default_wselfallflag = 0
+    default_chemflag = 0
+    default_bzeroflag = 0
+    training_script_name = "training_script.py"
+
+    # Define the required and optional files for SNAP potential
+    _required_files = [
+        "snap_potential.snapcoeff",  # coeffs
+        "snap_potential.snapparam",  # params
+        "snap_potential.mod",  # import lines in lammps
+    ]
+    _optional_files = [
+        "snap_potential.md",  # training metrics
+        "snap_potential.in",  # training input
+        training_script_name,  # training script
+    ]
+
+    # KIMkit settings - static for SNAP
+    # only support as simulator model for now
+    # important for KIM API integration but set as metadata in kimkit
+    _potential_type: str = 'SNAP'  # internal metadata classification tag
+    _kim_item_type: str = "simulator-model"
+    _kim_simulator_name: str = 'lammps'  # simulation code support
+    _model_type: str = 'snap'  # pair style string for use in simulation code
+    _model_driver: str = None  # only support as simulator model for now, model
+    # driver remains unset
+    # static definition, zbl not supported at this time
+    _model_definition: list = [
+        "pair_style snap",
+        # snapcoeff, snapparam, species list
+        ("pair_coeff * * @<parameter-file-1>@ @<parameter-file-2>@ "
+         "@<atom-type-sym-list>@"),
+    ]
+
+    # Set some dummy fields just to pacify kimkit - will be overwritten for
+    # KIM API handler
+    _kim_api_version: str = 'kim-api-not-supported-for-this-model'
+
+    # TODO: will need CMake file for KIM API
 
     def __init__(
         self,
         species: list[str],
-        model_driver: str,
-        settings_path: str,
-        kim_api: str = 'kim-api-collections-management',
-        kim_item_type: str = "simulator-model",
-        parameter_path: str = None,
-        kim_id: str = None,
-        model_name_prefix: str = "FitSNAP_Potential_Orchestrator_Generated",
-        param_files: Optional[list] = None,
-        training_files: Optional[list] = None,
-        potential_files: Optional[list] = None,
-        checkpoint_file: Optional[str] = './orchestrator_checkpoint.json',
-        checkpoint_name: Optional[str] = 'potential',
+        # hyperparameters explicit
+        cutoff_radius: float = default_cutoff_radius,
+        rfac0: float = default_rfac0,
+        two_j_max: int = default_two_j_max,
+        quadratic: bool = default_quadratic,
+        rmin0: float = default_rmin0,
+        wj: Union[float, list[float]] = default_wj,
+        radelem: Union[float, list[float]] = default_radelem,
+        use_zbl: bool = default_use_zbl,
+        wselfallflag: int = default_wselfallflag,
+        chemflag: int = default_chemflag,
+        bzeroflag: int = default_bzeroflag,
+        # template that will be trained
+        template: Optional[str] = None,
+        # potential name for KIM ID generation and saving for external usage
+        potential_name: str = 'snap_potential',
         **kwargs,
     ):
         """
-        initialization of the FitSnap potential with trainer_args dict
+        Initialize the SNAP potential
 
-        :param kim_id: kimcode to represent the item
-        :type kim_id: str
-        :param species: list of strings containing element symbols
-        :type species: list[str]
-        :param model_driver: driver needed to run the potential
-        :type model_driver: str
-        :param kim_api: path to the kim-api-collections-manager
-            executable.
-        :type kim_api: str
-        :param kim_item_type: what type of kim object to create an ID for.
-            For potentials, this should be either "portable-model" or
-            "simulator-model", depending on whether the model uses a driver
-            to implement its calculations, or runs commands in a simulator
-            program (e.g. lammps, ASE) respectively.
-        :type kim_item_type: str
-        :param settings_path: FitSnap settings file that include
-            parameters for various sections such as bispectrum,
-            calculator, solver
-        :type settings_path: str
-        :param parameter_path: path where the potential's param_files
-            will be written
-        :type parameter_path: str
-        :param param_files: list of file paths to the parameter files
-            of the potential. May be order-sensitive.
-        :type param_files: list[str]
-        :param training_files: list of files associated with the
-            training of the potential
-        :type training_files: list[str]
-        :param potential_files: list of all files associated with
-            the potential, including the superset of param_files,
-            training_files, and any other auxillary files.
-        :type potential_files: list[str]
-        :param checkpoint_file: file name to save checkpoints in
-        :type checkpoint_file: str
-        :param checkpoint_name: name of the checkpointed potential
-        :type checkpoint_name: str
+        This constructor provides several ways to initialize a SNAP potential:
+        1. With explicit hyperparameters (cutoff_radius, rfac0, etc.)
+        2. From a template file (template)
+        To import from existing files, use the :meth:`initialize_from_files`
+        class method.
+
+        :param species: List of element symbols used in the potential
+        :param cutoff_radius: Cutoff radius for atomic interactions
+        :param rfac0: Scaling factor for distance (0-1, controls smoothing)
+        :param two_j_max: Maximum 2j value for bispectrum components (even
+            integer)
+        :param quadratic: Whether to use quadratic terms in the potential
+        :param rmin0: Minimum cutoff radius
+        :param wj: Weight parameter for atoms/species (scalar or list)
+        :param radelem: Atomic radius parameter (scalar or list per species)
+        :param use_zbl: Whether to use ZBL potential for short-range
+            interactions
+        :param wselfallflag: Self-weight flag (0 or 1)
+        :param chemflag: Chemical environment flag (0 or 1)
+        :param bzeroflag: B-zero flag (0 or 1)
+        :param template: Path to FitSNAP template input file
+        :param potential_name: Name of the potential, used as filename prefix
+        :param kwargs: Additional keyword arguments
         """
-        if settings_path:
-            self.settings = settings_path
-        else:
-            n = len(species)
-            # rough implementation of reasonable defaults
-            # TODO: allow combining partial definitions with these defaults
-            self.settings = {
-                "BISPECTRUM": {
-                    "numTypes": n,
-                    "twojmax": [6] * n,
-                    "wj": [1.0 - (0.1 * i / n) for i in range(0, n)],
-                    "radelem": [0.5 - (0.1 * i / n) for i in range(0, n)],
-                    "types": species
-                },
-                "CALCULATOR": {
-                    "calculator": "LAMMPSSNAP",
-                    "energy": 1,
-                    "force": 1,
-                    "stress": 1
-                },
-                "SOLVER": {
-                    "solver": "SVD",
-                    "compute_testerrs": 1,
-                    "detailed_errors": 1
-                },
-                "OUTFILE": {
-                    "metrics": "fitsnap_potential.md",
-                    "potential": "fitsnap_potential"
-                },
-                "REFERENCE": {
-                    "units": "metal"
-                },
-                # possibly add default zbl using logic below to order
-            }
-
-        if kim_id:
-            self.kim_id = kim_id
-
-        self.model = None
-
-        self.model_type = "snap"
-
-        if parameter_path is not None:
-            root_exists = os.path.isdir(os.path.split(parameter_path)[0])
-            # should we "if not root_exists: os.makedirs(parameter_path)" ?
-
-            param_exists = os.path.isfile(f'{parameter_path}.snapparam')
-            if root_exists and (os.path.isdir(parameter_path)
-                                or not param_exists):
-                raise ValueError(
-                    'parameter_path should be of form path/potential_prefix')
-        self.parameter_path = parameter_path
-
-        self.kim_api_compatible = True
-
-        if not model_driver:
-            # default to openkim snap model driver if none supplied
-            model_driver = "SNAP__MD_536750310735_000"
-
-        self.checkpoint_name = checkpoint_name
-
-        self.trainer_args = {
-            "settings_path": settings_path,
-            "parameter_path": parameter_path,
-            "kim_api": kim_api
-        }
-
-        self.name = "fitsnap_potential"
-
+        # Initialize with base class
         super().__init__(
-            kim_id,
-            species,
-            model_driver,
-            model_name_prefix=model_name_prefix,
-            param_files=param_files,
-            training_files=training_files,
-            potential_files=potential_files,
-            kim_api=kim_api,
-            kim_item_type=kim_item_type,
-            checkpoint_file=checkpoint_file,
-            checkpoint_name=self.checkpoint_name,
+            species=species,
+            potential_name=potential_name,
+            **kwargs,
         )
-        self.logger.info('Finished instantiating FitSnap potential')
 
-    def checkpoint_potential(self):
-        """
-        checkpoint the potential module into the checkpoint file
-
-        save necessary internal variables into a dict with key checkpoint_name
-        and write to the (json) checkpoint file for restart capabilities
-        """
-
-        save_dict = {
-            self.checkpoint_name: {
-                'parameter_path': self.parameter_path,
-            }
+        # Track input files as a dictionary mapping file types to file paths
+        self.potential_files = {
+            k: None
+            for k in self._required_files + self._optional_files
         }
-        try:
-            if self.kim_id is not None:
-                save_dict[self.checkpoint_name]['kim_id'] = self.kim_id
-        except AttributeError:
-            pass
-        restarter.write_checkpoint_file(self.checkpoint_file, save_dict)
-
-    def restart_potential(self):
-        """
-        restart the potential module from the checkpoint file
-
-        check if the checkpoint_file has an entry matching the checkpoint_name
-        and set internal variables accordingly if so
-        """
-        restart_dict = restarter.read_checkpoint_file(
-            self.checkpoint_file,
-            self.checkpoint_name,
-        )
-        self.parameter_path = restart_dict.get('parameter_path',
-                                               self.parameter_path)
-        self.kim_id = restart_dict.get('kim_id', self.kim_id)
-        self.build_potential()
-
-    def build_potential(self) -> FitSnap:
-        """
-        Build a snap potential using FitSnap
-
-        The settings file that includes parameters for the snap potential
-        were passed to the object in __init__ as the trainer_args dict.
-        In addition to returning the model,
-        this method also sets it as the objects self.model attribute.
-
-        :returns: fitsnap model parameterized by parameters in the settings
-            file
-        :rtype: fitsnap instance
-        """
-
-        self.logger.info('Building potential using given parameters')
-
-        snap = FitSnap(self.settings, arglist=["--overwrite"])
-
-        self.logger.info('Finished constructing FitSnap potential')
-        self.model = snap
-
-        if self.kim_item_type == "portable-model":
-            if self.model_driver == "SNAP__MD_536750310735_000":
-                if (snap.config.sections['BISPECTRUM'].wselfallflag != 0
-                        or snap.config.sections['BISPECTRUM'].chemflag != 0
-                        or snap.config.sections['BISPECTRUM'].bnormflag != 0
-                        or snap.config.sections['BISPECTRUM'].switchinnerflag
-                        != 0):
-                    raise ValueError("wselfallflag, chemflag, bnormflag,"
-                                     " and switchinnerflag are not supported"
-                                     " by the KIM Model driver version 000"
-                                     " for SNAP, which is the current KIM "
-                                     "default. Version 001 will become the "
-                                     "new default once it is released.")
-
-            elif self.model_driver == "SNAP__MD_536750310735_001":
-                # remove check if this gets added to the driver
-                if snap.config.sections['BISPECTRUM'].switchinnerflag != 0:
-                    raise ValueError("switchinnerflag is not supported "
-                                     "by the KIM Model driver version 001"
-                                     " for SNAP.")
-                # check to be removed once development 001 driver fixes bug
-                if snap.config.sections['BISPECTRUM'].quadraticflag != 0:
-                    raise ValueError("The developmental KIM Model driver "
-                                     "version 001 for SNAP currently produces"
-                                     " incorrect forces for quadratic models."
-                                     " Please use version 000 for quadratic.")
+        if template:
+            if os.path.exists(template):
+                self.template = os.path.abspath(template)
+            else:
+                raise ValueError(
+                    'A template file is supplied but it does not exist!')
         else:
-            pass
+            self.template = None
 
-        return self.model
+        # Initialize based on the available inputs
+        # Initialization can come from two different sources:
+        # 1. Template input file
+        # 2. Explicit hyperparameters
+        self._initialize_from_inputs(
+            cutoff_radius,
+            rfac0,
+            two_j_max,
+            quadratic,
+            rmin0,
+            wj,
+            radelem,
+            use_zbl,
+            wselfallflag,
+            chemflag,
+            bzeroflag,
+        )
+
+    @classmethod
+    def initialize_from_files(
+        cls,
+        param_file: str,  # snapparam file
+        coeff_file: str,  # snapcoeff file
+        mod_file: str,  # mod file for lammps file
+        input_file: Optional[str] = None,  # training input
+        training_file: Optional[str] = None,  # training script
+        md_file: Optional[str] = None,  # metrics file
+        potential_name: str = 'snap_potential',
+    ) -> Potential:
+        """
+        :param param_file: Path to existing snapparam file
+        :param coeff_file: Path to existing snapcoeff file
+        :param mod_file: Path to LAMMPS mod file with potential commands
+        :param md_file: Path to markdown metrics file
+        """
+        species, hyperparameters = cls._load_hyperparameters_from_files(
+            param_file, coeff_file)
+        instance = cls(
+            species=species,
+            **asdict(hyperparameters),
+            potential_name=potential_name,
+        )
+
+        instance.potential_files = {
+            "snap_potential.snapcoeff": coeff_file,
+            "snap_potential.snapparam": param_file,
+            "snap_potential.mod": mod_file,
+            "snap_potential.md": md_file,
+            "snap_potential.in": input_file,
+            "training_script.py": training_file,
+        }
+        if input_file:
+            instance.template = input_file
+
+        # files are provided, but make sure they exist. Exception raised
+        # if any missing
+        instance._has_required_files = instance._check_files_set_and_exist(
+            check_exist=True, )
+
+        return instance
+
+    @classmethod
+    def initialize_from_kim(cls, kim_id: str) -> Potential:
+        """
+        Initialize the model from an existing potential in KIMkit
+
+        :param kim_id: The KIM ID of the saved potential (e.g.,
+            snap_potential__SM_...)
+        """
+        instance = super().initialize_from_kim(kim_id)
+
+        for file_name in instance.potential_files.keys():
+            full_path = os.path.join(kim_id, file_name)
+            if os.path.exists(full_path):
+                instance.potential_files[file_name] = full_path
+
+        species, hyperparameters = instance._load_hyperparameters_from_files(
+            instance.potential_files["snap_potential.snapparam"],
+            instance.potential_files["snap_potential.snapcoeff"],
+        )
+        if instance.potential_files["snap_potential.in"]:
+            instance.template = instance.potential_files["snap_potential.in"]
+        instance.species = species
+        instance.hyperparameters = hyperparameters
+
+        # files are provided, but make sure they exist. Exception raised
+        # if any missing
+        instance._has_required_files = instance._check_files_set_and_exist(
+            check_exist=True)
+
+        return instance
+
+    def _initialize_from_inputs(
+        self,
+        cutoff_radius,
+        rfac0,
+        two_j_max,
+        quadratic,
+        rmin0,
+        wj,
+        radelem,
+        use_zbl,
+        wselfallflag,
+        chemflag,
+        bzeroflag,
+    ):
+        """Initialize the potential based on available inputs"""
+        self._has_required_files = False
+        # Priority 1: Check if template is provided
+        if self.template:
+            # Parse template for hyperparameters
+            set_hyperparams = self._parse_template_file(self.template)
+            self.hyperparameters = SNAPBispectrumModelHyperparameters(
+                cutoff_radius=set_hyperparams.get('cutoff_radius',
+                                                  cutoff_radius),
+                rfac0=set_hyperparams.get('rfac0', rfac0),
+                two_j_max=set_hyperparams.get('two_j_max', two_j_max),
+                quadratic=set_hyperparams.get('quadratic', quadratic),
+                rmin0=set_hyperparams.get('rmin0', rmin0),
+                wj=set_hyperparams.get('wj', wj),
+                radelem=set_hyperparams.get('radelem', radelem),
+                use_zbl=set_hyperparams.get('use_zbl', use_zbl),
+                wselfallflag=set_hyperparams.get('wselfallflag', wselfallflag),
+                chemflag=set_hyperparams.get('chemflag', chemflag),
+                bzeroflag=set_hyperparams.get('bzeroflag', bzeroflag),
+            )
+        # Use default template and provided hyperparameters
+        else:
+            self.hyperparameters = SNAPBispectrumModelHyperparameters(
+                cutoff_radius=cutoff_radius,
+                rfac0=rfac0,
+                two_j_max=two_j_max,
+                quadratic=quadratic,
+                rmin0=rmin0,
+                wj=wj,
+                radelem=radelem,
+                use_zbl=use_zbl,
+                wselfallflag=wselfallflag,
+                chemflag=chemflag,
+                bzeroflag=bzeroflag,
+            )
+            source_file_location = os.path.dirname(os.path.abspath(__file__))
+            self.template = (f'{source_file_location}/'
+                             'default_templates/snap_potential.in')
+
+    @classmethod
+    def _load_hyperparameters_from_files(
+        cls,
+        param_file: str,
+        coeff_file: str,
+    ) -> tuple[list[str], SNAPBispectrumModelHyperparameters]:
+        """
+        Load potential from existing parameter, coefficient, and model files
+
+        This method reads the files specified in self.potential_files and
+        extracts hyperparameters from the parameter file to be used later
+        in the initialization process.
+
+        :return: tuple of species list and hyperparameters
+        """
+        # Extract hyperparameters from snapparam file
+        if not os.path.exists(param_file):
+            raise FileNotFoundError(
+                f"Required snapparam file not found: {param_file}")
+
+        (
+            cutoff_radius,
+            rfac0,
+            two_j_max,
+            quadratic,
+            rmin0,
+            use_zbl,
+            wselfallflag,
+            chemflag,
+            bzeroflag,
+        ) = cls._extract_hyperparams_from_snapparam(param_file)
+
+        # Extract species information from snapcoeff file if available
+        if not os.path.exists(coeff_file):
+            raise FileNotFoundError(
+                f"Required snapcoeff file not found: {coeff_file}")
+
+        (
+            species,
+            radelem,
+            wj,
+        ) = cls._extract_hyperparams_from_snapcoeff(coeff_file)
+
+        # Store the extracted hyperparameters
+        hyperparameters = SNAPBispectrumModelHyperparameters(
+            cutoff_radius=cutoff_radius,
+            rfac0=rfac0,
+            two_j_max=two_j_max,
+            quadratic=quadratic,
+            rmin0=rmin0,
+            wj=wj,
+            radelem=radelem,
+            use_zbl=use_zbl,
+            wselfallflag=wselfallflag,
+            chemflag=chemflag,
+            bzeroflag=bzeroflag,
+        )
+        return species, hyperparameters
+
+    @staticmethod
+    def _parse_config_file(file_path, sections_to_parse=None) -> dict:
+        """
+        Generic helper to parse a configuration file with sections
+
+        :param file_path: Path to the configuration file
+        :param sections_to_parse: List of section names to parse (None means
+            all)
+        :return: Dictionary of extracted parameters by section
+        """
+        result = {}
+
+        try:
+            with open(file_path, 'r') as f:
+                lines = f.readlines()
+
+            current_section = None
+
+            for line in lines:
+                line = line.strip()
+
+                # Skip empty lines and comments
+                if not line or line.startswith("#"):
+                    continue
+
+                # Check for section headers
+                if line.startswith("[") and line.endswith("]"):
+                    current_section = line[1:-1]  # Remove brackets
+                    if (sections_to_parse is None
+                            or current_section in sections_to_parse):
+                        result[current_section] = {}
+                    continue
+
+                # Skip if not in a section we care about
+                if current_section not in result:
+                    continue
+
+                # Parse key-value pairs
+                if "=" in line:
+                    parts = line.split("=", 1)  # Split on first = only
+                    if len(parts) >= 2:
+                        key = parts[0].strip()
+                        value = parts[1].strip()
+
+                        # Process value based on key type
+                        if key in [
+                                "twojmax", "wselfallflag", "chemflag",
+                                "bzeroflag", "quadraticflag"
+                        ]:
+                            int_val = int(value)
+                            # Validate flag values
+                            if key in [
+                                    "wselfallflag", "chemflag", "bzeroflag",
+                                    "quadraticflag"
+                            ] and int_val not in [0, 1]:
+                                raise ValueError(
+                                    f"Invalid {key}: {int_val}, must be 0 or 1"
+                                )
+                            # Validate twojmax
+                            if key == "twojmax" and int_val <= 0:
+                                raise ValueError(f"Invalid twojmax: {int_val},"
+                                                 " must be positive")
+                            result[current_section][key] = int_val
+
+                        elif key in ["rcutfac", "rfac0", "rmin0"]:
+                            float_val = float(value)
+                            # Validate positive values
+                            if key == "rcutfac" and float_val <= 0:
+                                raise ValueError(
+                                    f"Invalid rcutfac: {float_val}, must be "
+                                    "positive")
+                            # Validate rfac0 range
+                            if key == "rfac0" and (float_val <= 0
+                                                   or float_val > 1.0):
+                                raise ValueError(
+                                    f"Invalid rfac0: {float_val}, must be "
+                                    "between 0 and 1")
+                            # Validate rmin0
+                            if key == "rmin0" and float_val < 0:
+                                raise ValueError(
+                                    f"Invalid rmin0: {float_val}, must be "
+                                    "non-negative")
+                            result[current_section][key] = float_val
+
+                        elif key in ["wj", "radelem"]:
+                            # Handle possible list of values
+                            values = value.split()
+                            if len(values) > 1:
+                                float_vals = [float(v) for v in values]
+                                # Validate all values are positive
+                                if any(v <= 0 for v in float_vals):
+                                    raise ValueError(
+                                        f"Invalid {key} values: {float_vals}, "
+                                        "all must be positive")
+                                result[current_section][key] = float_vals
+                            else:
+                                float_val = float(value)
+                                # Validate the value is positive
+                                if float_val <= 0:
+                                    raise ValueError(
+                                        f"Invalid {key}: {float_val}, must be "
+                                        "positive")
+                                result[current_section][key] = float_val
+                        else:
+                            # Default to string
+                            result[current_section][key] = value
+
+                # Special handling for ZBL in REFERENCE section
+                if (current_section == "REFERENCE" and "pair_style" in line
+                        and "zbl" in line):
+                    result[current_section]["use_zbl"] = True
+
+        except Exception as e:
+            raise RuntimeError(
+                f'Could not parse config file {file_path} due to {e}')
+
+        return result
+
+    @staticmethod
+    def _extract_hyperparams_from_snapcoeff(
+        coeff_file: str
+    ) -> tuple[
+            list[str],
+            Union[list[float], float],
+            Union[list[float], float],
+    ]:
+        """
+        Extract species information from snapcoeff file
+
+        This method parses a SNAP coefficient file to extract species names,
+        atomic radii (radelem), and weight factors (wj). The format of
+        snapcoeff files has a header line with number of species and
+        coefficients, followed by species information lines and coefficient
+        values.
+
+        :param coeff_file: Path to the snapcoeff file
+        :type coeff_file: str
+        :return: Tuple of (species_list, radelem_values, wj_values)
+        :rtype: tuple[list[str], Union[float, list[float]], Union[float, list
+            [float]]]
+        """
+        species_list = []
+        radelem_values = []
+        wj_values = []
+
+        with open(coeff_file, 'r') as f:
+            lines = f.readlines()
+
+            # Skip initial comment lines
+            start_line = 0
+            for i, line in enumerate(lines):
+                if line.strip() and not line.strip().startswith('#'):
+                    start_line = i
+                    break
+
+            # Parse header line with number of species and coefficients
+            header_parts = lines[start_line].strip().split()
+            if len(header_parts) >= 2:
+                num_species = int(header_parts[0])
+                num_coeffs_per_species = int(header_parts[1])
+            else:
+                raise RuntimeError("Invalid header format in snapcoeff file")
+
+            # Find and extract species information
+            line_index = start_line + 1
+            while line_index < len(lines) and len(species_list) < num_species:
+                line = lines[line_index].strip()
+                if line and not line.startswith('#'):
+                    parts = line.split()
+                    if len(parts) >= 3:
+                        try:
+                            # Check if this looks like a species line
+                            # (name followed by two numbers)
+                            species_name = parts[0]
+                            radelem = float(parts[1])
+                            wj = float(parts[2])
+
+                            species_list.append(species_name)
+                            radelem_values.append(radelem)
+                            wj_values.append(wj)
+
+                            # Skip the coefficients for this species
+                            line_index += num_coeffs_per_species + 1
+                        except (ValueError, IndexError):
+                            # Not a species line, continue to next line
+                            line_index += 1
+                    else:
+                        line_index += 1
+                else:
+                    line_index += 1
+
+        # convert to floats if length 1
+        if len(wj_values) == 1:
+            wj = wj_values[0]
+        else:
+            wj = wj_values
+        if len(radelem_values) == 1:
+            radelem = radelem_values[0]
+        else:
+            radelem = radelem_values
+
+        # Validate wj - weights should be positive
+        if isinstance(wj, float) and wj <= 0:
+            raise ValueError(f"Invalid wj: {wj}, must be positive")
+        elif isinstance(wj, list):
+            if any(w <= 0 for w in wj):
+                raise ValueError(f"Invalid wj values in list: {wj}, all "
+                                 "weights must be positive")
+
+        # Validate radelem - atomic radii should be positive
+        if isinstance(radelem, float) and radelem <= 0:
+            raise ValueError(f"Invalid radelem: {radelem}, must be positive")
+        elif isinstance(radelem, list):
+            if any(r <= 0 for r in radelem):
+                raise ValueError(f"Invalid radelem values in list: {radelem}, "
+                                 "all radii must be positive")
+
+        return species_list, radelem, wj
+
+    @classmethod
+    def _extract_hyperparams_from_snapparam(
+        cls,
+        param_file: str,
+    ) -> tuple[float, float, int, bool, float, bool, int, int, int]:
+        """
+        Extract hyperparameters from a snapparam file
+
+        This method parses a SNAP parameter file to extract all listed
+        hyperparameters. It supports the simple space-separated format without
+        section headers. Parameters include cutoff radius, rfac0, twojmax,
+        quadratic flag, etc.
+
+        :param param_file: Path to the snapparam file
+        :type param_file: str
+        :return: Tuple of all hyperparameters (cutoff_radius, rfac0,
+            two_j_max, quadratic, rmin0, use_zbl, wselfallflag,
+            chemflag, bzeroflag)
+        :rtype: tuple[float, float, int, bool, float, bool, int, int, int]
+        """
+        # Default values
+        cutoff_radius = cls.default_cutoff_radius
+        rfac0 = cls.default_rfac0
+        two_j_max = cls.default_two_j_max
+        quadratic = cls.default_quadratic
+        rmin0 = cls.default_rmin0
+        use_zbl = cls.default_use_zbl
+        wselfallflag = cls.default_wselfallflag
+        chemflag = cls.default_chemflag
+        bzeroflag = cls.default_bzeroflag
+
+        # First try the simple format:
+        with open(param_file, 'r') as f:
+            param_lines = f.readlines()
+
+        # Check if this is simply formatted file (no section headers)
+        for line in param_lines:
+            line = line.strip()
+            if line.startswith('[') and line.endswith(']'):
+                # This looks like a section-based file
+                raise RuntimeError('SNAP param file is incorrectly formatted')
+
+            if not line:  # Skip empty lines
+                continue
+
+            # Split by whitespace
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+
+            if len(parts) == 2:
+                key = parts[0]
+                value = parts[1]
+
+                # Parse according to key
+                if key == "rcutfac":
+                    cutoff_radius = float(value)
+                elif key == "rfac0":
+                    rfac0 = float(value)
+                elif key == "twojmax":
+                    two_j_max = int(value)
+                elif key == "quadraticflag":
+                    quadratic = int(value) == 1
+                elif key == "rmin0":
+                    rmin0 = float(value)
+                elif key == "wselfallflag":
+                    wselfallflag = int(value)
+                elif key == "chemflag":
+                    chemflag = int(value)
+                elif key == "bzeroflag":
+                    bzeroflag = int(value)
+            if len(parts) > 2:
+                # reference section will contain zbl in pair_style line
+                if parts[0] == '#' and 'zbl' in parts:
+                    use_zbl = True
+
+        # Validate the parsed values
+        if cutoff_radius <= 0:
+            raise ValueError(
+                f"Invalid cutoff_radius: {cutoff_radius}, must be positive")
+
+        if rfac0 <= 0 or rfac0 > 1.0:
+            raise ValueError(
+                f"Invalid rfac0: {rfac0}, must be between 0 and 1")
+
+        if two_j_max <= 0:
+            raise ValueError(
+                f"Invalid two_j_max: {two_j_max}, must be positive")
+
+        if rmin0 < 0:
+            raise ValueError(f"Invalid rmin0: {rmin0}, must be non-negative")
+
+        # Validate flag parameters (should be 0 or 1)
+        for flag, flag_name in zip([wselfallflag, chemflag, bzeroflag],
+                                   ['wselfallflag', 'chemflag', 'bzeroflag']):
+            if flag not in [0, 1]:
+                raise ValueError(
+                    f"Invalid {flag_name}: {flag}, must be 0 or 1")
+
+        return (cutoff_radius, rfac0, two_j_max, quadratic, rmin0, use_zbl,
+                wselfallflag, chemflag, bzeroflag)
+
+    @classmethod
+    def _parse_template_file(cls, template_path: str) -> dict:
+        """
+        Parse a FitSNAP template file to extract hyperparameters
+
+        This method reads a template file (which may include Jinja formatting)
+        and extracts hardcoded hyperparameters.
+
+        :param template_path: Path to the template file
+        :return: Dictionary of extracted hyperparameters
+        """
+        extracted_params = {}
+
+        try:
+            # First we'll need to filter out Jinja template variables
+            with open(template_path, 'r') as f:
+                template_lines = []
+                for line in f:
+                    parts = line.strip().split('=', 1)
+                    if len(parts
+                           ) > 1 and '{{' in parts[1] and '}}' in parts[1]:
+                        # Skip lines with Jinja variables
+                        continue
+                    template_lines.append(line)
+
+            # Create a temporary file with non-Jinja lines
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w',
+                                             delete=False) as temp_file:
+                temp_file.writelines(template_lines)
+                temp_path = temp_file.name
+
+            # Parse the cleaned file using our generic parser
+            try:
+                config = cls._parse_config_file(temp_path,
+                                                ["BISPECTRUM", "REFERENCE"])
+            finally:
+                os.unlink(temp_path)  # Clean up the temporary file
+
+            # Convert parsed config to our parameter naming convention
+            if "BISPECTRUM" in config:
+                for param_name, param_value in config["BISPECTRUM"].items():
+                    # Convert to expected parameter names
+                    if param_name == "rcutfac":
+                        extracted_params['cutoff_radius'] = param_value
+                    elif param_name == "rfac0":
+                        extracted_params['rfac0'] = param_value
+                    elif param_name == "twojmax":
+                        extracted_params['two_j_max'] = param_value
+                    elif param_name == "quadraticflag":
+                        extracted_params['quadratic'] = param_value == 1
+                    elif param_name == "rmin0":
+                        extracted_params['rmin0'] = param_value
+                    elif param_name == "wselfallflag":
+                        extracted_params['wselfallflag'] = param_value
+                    elif param_name == "chemflag":
+                        extracted_params['chemflag'] = param_value
+                    elif param_name == "bzeroflag":
+                        extracted_params['bzeroflag'] = param_value
+                    elif param_name == "wj":
+                        extracted_params['wj'] = param_value
+                    elif param_name == "radelem":
+                        extracted_params['radelem'] = param_value
+
+            # Check for ZBL in REFERENCE section
+            if "REFERENCE" in config and config["REFERENCE"].get("use_zbl"):
+                extracted_params['use_zbl'] = True
+
+        except Exception as e:
+            raise RuntimeError("No hyperparameters could be extracted from "
+                               f"template due to {e}")
+
+        return extracted_params
 
     def load_potential(self, path: str):
         """
-        parameterize the potential based on an existing potential at path
+        Parameterize the potential by loading the potential files from a path.
 
-        :param path: path string including filename where potential resides
-        """
-        raise NotImplementedError
+        Note that this is specifically intended to be used in conjunction with
+        save_potential, as both files will assume hard-coded file names. If you
+        wish to load a potential using files generated external to the
+        orchestrator, you should use `initialize_from_files`.
 
-    def get_potential_files(
-        self,
-        destination_path: str,
-        kim_id: str,
-        include_dependencies: bool = False,
-    ) -> str:
-        """
-        Load a KIM model from a kimkit repository using the KIM ID
-
-        :param destination_path: path to save the resulting .txz file
-        :type destination_path: str
-        :param kim_id: kimcode of the item to be retrieved
-        :type kim_id: str
-        :param include_dependencies: switch to include drivers of portable
-            models, tests, |default| ``False``
-        :type include_dependencies: bool
-        :returns: path to the tar archive at destination_path
-        :rtype: str
-        """
-        tarfile_name = super(FitSnapPotential, self).get_potential_files(
-            destination_path=destination_path,
-            kim_id=kim_id,
-            include_dependencies=include_dependencies,
-        )
-
-        return tarfile_name
-
-        # TODO: unpack tarfile to location, set as parameter_path
-
-    def _write_potential_to_file(self, path):
-        """
-        save the current potential path to a file in a specified path
-
-        :param path: path including filename where the potential is to be
-            written
+        :param path: Path to directory containing potential files
         :type path: str
         """
+        from pathlib import Path
 
-        if self.parameter_path is not None:
-            param_path, name = os.path.split(self.parameter_path)
-            if (os.path.abspath(param_path) != os.path.abspath(path)):
-                os.makedirs(path, exist_ok=True)
-                os.system(f'cp -r {param_path}/* {path}')
-                new_parameter_path = os.path.join(path, name)
-                self.parameter_path = new_parameter_path
+        # Ensure the path exists
+        if not os.path.isdir(path):
+            raise FileNotFoundError(f"Directory not found: {path}")
+
+        path_obj = Path(path)
+        potential_name_found = None
+
+        file_exts = [s.split('.')[1] for s in self._required_files]
+        # Look for required files first to determine potential name
+        for file_ext, file_name in zip(file_exts, self._required_files):
+            # Find files with the expected extension
+            matching_files = list(path_obj.glob(f"*.{file_ext}"))
+            if not matching_files:
+                raise FileNotFoundError(f"No {file_ext} file found in {path}")
+
+            # Extract potential name from the first matching file
+            if potential_name_found is None:
+                potential_name_found = matching_files[0].stem
+
+            # Check if all required files have consistent names
+            expected_file = path_obj / f"{potential_name_found}.{file_ext}"
+            if not expected_file.exists():
+                raise FileNotFoundError(
+                    f"Required file {expected_file} not found in {path}. "
+                    f"Found {matching_files[0]} instead.")
+
+            # Update potential_files with the found file
+            self.potential_files[file_name] = str(expected_file)
+
+        # Check if potential name needs updating
+        if potential_name_found != self.potential_name:
+            self.logger.info(
+                f"Warning: Found potential with name '{potential_name_found}' "
+                "which differs from Orchestrator standard: 'snap_potential'.")
+
+        file_exts = [s.split('.')[1] for s in self._optional_files]
+        # Check for optional files
+        for file_ext, file_name in zip(file_exts, self._optional_files):
+            if file_ext == "py":
+                expected_file = path_obj / self.training_script_name
             else:
-                pass  # files already exist in specified location
+                expected_file = path_obj / f"{potential_name_found}.{file_ext}"
+            if expected_file.exists():
+                self.potential_files[file_name] = str(expected_file)
 
-        else:
-            raise InstallPotentialError(
-                'Potential object has no .parameter_path specifying the'
-                'location of saved files from a successful training.')
+        # Mark that we have all required files
+        self._has_required_files = True
 
-    def _save_potential_to_kimkit(
-        self,
-        kim_id: str = None,
-        species: List[str] = None,
-        model_name_prefix: str = None,
-        param_files: List[str] = None,
-        training_files: Optional[List[str]] = None,
-        potential_files: Optional[List[str]] = None,
-        model_driver: str = None,
-        model_defn: Optional[str] = None,
-        model_init: Optional[str] = None,
-        work_dir: str = '.',
-        previous_item_name: str = None,
-    ) -> str:
-        """
-        Save a potential into KIMKit for storage
-
-        Add a KIM Portable Model (conformant to KIM API 2.3+) to KIMkit
-        with placeholder metadata, intended for temporary models
-
-        AT LEAST ONE of either kim_id or model_name_prefix is REQUIRED
-        to save a potential to KIMkit.
-
-        This is because When saving a new model it must be assigned a
-        kimcode, a structured unique id code of the form
-
-        Human_Readable_Prefix__MO_000000999999_000
-
-        Each kimcode begins With a human-readable prefix (containing
-        letters, numbers, and underscores, and starting with a letter).
-        Then, there's a 2-letter code corresponding to
-        the type of model; MO for portable-models that implement
-        their executable code in a standalone model-driver, and SM for
-        simulator-models that wrap commands to a KIM-compatible simulator
-        software like LAMMPS. Then, there's a unique 12 digit ID number
-        that identifies the item, and finally a 3 digit version number.
-
-        You can simply provide the human-readable prefix
-        as "model_name_prefix" and this method will generate a new
-        kimcode and assign it as this potential's kim_id, beginning
-        with version 000.
-
-        Otherwise, you can manually generate a kimcode yourself by
-        passing the same human-readable prefix to
-        kimkit.kimcodes.generate_new_kim_id(prefix)
-        which will return a new unique kimcode. Then you can simply
-        assign that as the item's kim_id.
-
-
-        :param kim_id: Valid KIM Model ID, Alchemy_W__MO_000000999999_000
-        :type kim_id: str
-        :param species: List of supported species
-        :type species: list(str)
-        :param model_name_prefix: Human readable prefix to a KIM Model ID,
-            must be provided if kim_id is not
-        :type model_name_prefix: str
-        :param param_files: List of paths to parameter files. If there is
-            more than one parameter file, the order matters.
-            For example, for SNAP, the `snapcoeff` file comes
-            first, then `snapparam`. See the README of the
-            corresponding KIM Model Driver on openkim.org for more info.
-        :type param_files: list(str)
-        :param training_files: files associated with the training of the
-            potential.
-        :type training_files: list(str)
-        :param potential_files: list of all files to be included in the
-            potenttial. A superset of param_files, training_files,
-            and any other auxillary files to be included. If param_files
-            and training_files are not included they will be
-            added automatically.
-        :type potential_files: list(str)
-        :param model_driver: KIM ID of the corresponding KIM Model Driver.
-            Must be in KIMkit
-        :type model_driver: str
-        :param model_defn: for simulator-models, commands needed to
-            initialize the potential in the simulator (typically LAMMPS)
-        :type model_defn: str
-        :param model_init: for simulator-models, commands needed to
-            initialize the model in the simulator (typically LAMMPS)
-        :type model_init: str
-        :param work_dir: where to make temporary files
-        :type work_dir: str
-        :param previous_item_name: any name the item was referred to
-            before this, that may be lingering in makefiles. Used
-            by KIMkit to do a regex search to attempt to update
-            makefiles to refer to the item's kim_id
-        :type previous_item_name: str
-        :returns: id of the newly saved potential
-        :rtype: str
-        """
-
-        if kim_id is None:
-            try:
-                kim_id = self.kim_id
-            except AttributeError:
-                pass
-            if model_name_prefix is None:
-                raise TypeError("One of kim_id or model_name_prefix"
-                                "is required to initialize a potential")
-            self.generate_new_kim_id(model_name_prefix)
-        # don't overwrite the working model, if any
-        if self.model is None:
-            self.model = self.build_potential()
-        param_files = self._init_param_files(dest_path=self.parameter_path)
-        sorted_param_files = self._sort_param_files(param_files)
-
-        try:
-            self.potential_files += potential_files
-        except AttributeError:
-            self.potential_files = []
-            self.potential_files += potential_files
-        for file in param_files:
-            if file not in sorted_param_files:
-                self.potential_files.append(file)
-        self.param_files = sorted_param_files
-
-        if not model_driver:
-            try:
-                model_driver = self.model_driver
-            except AttributeError:
-                # default to openkim snap model driver if none supplied
-                model_driver = "SNAP__MD_536750310735_000"
-        if not species:
-            try:
-                species = self.species
-            except AttributeError:
-                raise AttributeError("""species must be specified in
-                input if not an attribute of this potential instance.""")
-
-        super(FitSnapPotential, self)._save_potential_to_kimkit(
-            kim_id=kim_id,
-            model_name_prefix=model_name_prefix,
-            model_defn=model_defn,
-            model_init=model_init,
-            param_files=self.param_files,
-            training_files=training_files,
-            potential_files=self.potential_files,
-            model_driver=model_driver,
-            species=species,
-            work_dir=os.path.split(self.parameter_path)[0],
-            previous_item_name=previous_item_name,
+        # Extract hyperparameters from the parameter file
+        # these should all be set already, but ensure consistency
+        species, hyperparameters = self._load_hyperparameters_from_files(
+            self.potential_files["snap_potential.snapparam"],
+            self.potential_files["snap_potential.snapcoeff"],
         )
+        self.species = species
+        self.hyperparameters = hyperparameters
 
-        return self.kim_id
-
-    def _sort_param_files(
-        self,
-        param_files: str,
-    ) -> list[str]:
+    def _read_lammps_commands_from_mod(self) -> list[str]:
         """
-        Helper function to sort param files for FitSnap
+        Read LAMMPS commands from the .mod file and rewrite paths to be absolute.
 
-        Sorts parameter files into *.snapcoeff, then
-        *.snapparam, then all other auxillary files.
+        This helper method reads all non-comment, non-empty lines from the
+        snap_potential.mod file and rewrites relative paths to coefficient
+        and parameter files to be absolute paths for robustness.
 
-        :param param_files: paths to parameter files for fitsnap potential
-        :type param_files: str
-        :rtype: list of file path strings
+        :returns: List of LAMMPS commands with absolute paths
+        :rtype: list[str]
+        :raises RuntimeError: If required files are not available
+        :raises FileNotFoundError: If mod file is not found
         """
-        param_files_sorted = []
+        from pathlib import Path
 
-        param_path = os.path.split(self.parameter_path)[0]
+        mod_path = self.potential_files.get("snap_potential.mod")
+        if not mod_path:
+            raise RuntimeError("snap_potential.mod is missing from potential_files")
 
-        snapcoeff_glob = os.path.join(param_path, "*.snapcoeff")
-        snapcoeff_file = glob.glob(snapcoeff_glob)
+        coeff_path = Path(self.potential_files.get("snap_potential.snapcoeff"))
+        coeff_path_abs = coeff_path.resolve().as_posix()
+        param_path = Path(self.potential_files.get("snap_potential.snapparam"))
+        param_path_abs = param_path.resolve().as_posix()
 
-        if len(snapcoeff_file) == 1:
-            param_files_sorted.append(snapcoeff_file[0])
-            param_files.remove(snapcoeff_file[0])
+        def _rewrite_cmd_paths(cmd: str) -> str:
+            # Replace coeff and param file references with absolute paths
+            parts = cmd.split()
+            for i, part in enumerate(parts):
+                # Check if this part looks like a file path for coeff or param
+                if coeff_path.name in part:
+                    parts[i] = coeff_path_abs
+                elif param_path.name in part:
+                    parts[i] = param_path_abs
+            return ' '.join(parts)
+
+        lmpcmds: list[str] = []
+        with open(mod_path, "r") as f:
+            for raw_line in f:
+                line = raw_line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                lmpcmds.append(_rewrite_cmd_paths(line))
+
+        if not lmpcmds:
+            raise RuntimeError(
+                f"snap_potential.mod at {mod_path} contains no LAMMPS commands")
+
+        return lmpcmds
+
+    def _initialize_calculator(self):
+        """
+        Set up the potential calculator based on current hyperparameters
+
+        This method initializes the ASE calculator for SNAP potentials
+        using the current hyperparameters and potential files. It imports
+        the LAMMPS calculator from ASE and configures it with the appropriate
+        pair style and coefficients for SNAP potentials.
+
+        :raises RuntimeError: If required files are not available
+        :raises Exception: If calculator setup fails
+        """
+        if self._has_required_files:
+            try:
+                # Import here to avoid dependency requirement when not needed
+                from ase.calculators.lammpslib import LAMMPSlib
+
+                # Get LAMMPS commands from mod file
+                lmpcmds = self._read_lammps_commands_from_mod()
+
+                # Create the calculator object
+                self._potential_calculator = LAMMPSlib(lmpcmds=lmpcmds)
+            except Exception as e:
+                self.logger.info(
+                    f"Warning: Failed to set up LAMMPS calculator: {e}")
+                raise e
         else:
-            raise RuntimeError("""
-            .snapcoeff file required to define snap potential""")
+            raise RuntimeError("Required files are not available, "
+                               "potential calculator not initialized.")
 
-        snapparam_glob = os.path.join(param_path, "*.snapparam")
-        snapparam_file = glob.glob(snapparam_glob)
-
-        if len(snapparam_file) == 1:
-            param_files_sorted.append(snapparam_file[0])
-            param_files.remove(snapparam_file[0])
-        else:
-            raise RuntimeError("""
-            .snapparam file required to define snap potential""")
-
-        snapmod_glob = os.path.join(param_path, "*.mod")
-        snapmod_file = glob.glob(snapmod_glob)
-
-        # check for a .mod file and if it exists
-        # check if it uses zbl
-        # in which case, create a .hybridparam file from it
-        if len(snapmod_file) >= 1:
-            for i in range(len(snapmod_file)):
-                added_hybridparam = self._add_hybridparam_file_if_required(
-                    snapmod_file[i])
-                if added_hybridparam is not None:
-                    param_files_sorted = param_files_sorted + added_hybridparam
-                    break
-
-        for file in param_files_sorted:
-            if ".mod" in file:
-                param_files_sorted.remove(file)
-            if ".md" in file:
-                param_files_sorted.remove(file)
-
-        return param_files_sorted
-
-    def _add_hybridparam_file_if_required(
+    def save_potential(
         self,
-        fitsnap_mod_file: str,
+        path: str,
+        makedirs: bool = False,
+    ) -> Union[str, list[str]]:
+        """
+        Save the potential and other necessary data to disk.
+
+        Note that this uses a strict naming convention for integration with
+        load_potential().
+
+        :param path: Directory path where the model should be saved
+        :param makedirs: If True, creates folder if it doesn't exist. Default
+            is False.
+        :returns: List of paths to the saved model files
+        """
+        import shutil
+        from pathlib import Path
+
+        if not self._has_required_files:
+            raise FileNotFoundError("The Potential is missing required files!"
+                                    " It probably needs to be trained first.")
+
+        # Create the directory if it doesn't exist and makedirs is True
+        if makedirs:
+            os.makedirs(path, exist_ok=True)
+        elif not os.path.isdir(path):
+            raise FileNotFoundError(f"Directory not found: {path}")
+
+        path_obj = Path(path)
+        saved_files = []
+
+        # Copy all required and optional files to the destination
+        all_files = self._required_files + self._optional_files
+
+        for file_name in all_files:
+            file_ext = file_name.split('.')[1]
+            source_path = self.potential_files.get(file_name)
+
+            # Skip if file doesn't exist
+            if not source_path:
+                continue
+
+            # Destination path with standardized naming
+            dest_file = path_obj / f"{self.potential_name}.{file_ext}"
+
+            # Copy the file
+            try:
+                shutil.copy2(source_path, dest_file)
+                saved_files.append(str(dest_file))
+            except Exception as e:
+                self.logger.info(
+                    f"Warning: Failed to copy {file_name} file: {e}")
+
+        return saved_files
+
+    def _write_training_script(
+        self,
+        save_path: str,
+        dataset_list: list,
+        storage: Storage,
+        energy_weight: float,
+        force_weight: float,
+        stress_weight: float,
+        train_frac: float,
+        test_frac: float,
+        val_frac: float,
+        per_atom_weights: Optional[Union[list[np.ndarray], str]] = None,
     ) -> str:
-        """Parse the .mod file associated with this potential,
-        and use it to create a .hybridparam file if required.
+        """
+        Write a script to run the potential training outside of memory
 
-        :param fitsnap_mod_file: path to the *.mod file
-            that fitsnap creates
-        :type fitsnap_mod_file: str
-        :returns: path to created *.hybridparam file
+        This is a helper function for generating a script, training_script.py,
+        which can be executed via a workflow or offline. It additionally saves
+        needed additional files with it, such as a weights.txt data file.
+
+        :param save_path: path where the training script will be written
+        :type save_path: str
+        :param dataset_list: list of dataset handles which should be used for
+            the training procedure
+        :type dataset_list: list of str
+        :param storage: an instance of the storage class, which contains the
+            datasets in dataset_list
+        :type storage: Storage
+        :param energy_weight: Weight for energy terms in the loss function
+        :type energy_weight: float
+        :param force_weight: Weight for force terms in the loss function
+        :type force_weight: float
+        :param stress_weight: Weight for stress terms in the loss function
+        :type stress_weight: float
+        :param train_frac: Fraction of data to use for training
+        :type train_frac: float
+        :param test_frac: Fraction of data to use for testing
+        :type test_frac: float
+        :param val_frac: Fraction of data to use for validation
+        :type val_frac: float
+        :param per_atom_weights: Controls per-atom weighting
+        :type per_atom_weights: Union[list[np.ndarray], str]
+        :returns: name of the script that is generated (training_script.py)
         :rtype: str
         """
-        with open(fitsnap_mod_file, "r") as f:
+        # Make sure save_path is absolute
+        full_save_path = os.path.abspath(save_path)
 
-            data = f.read()
+        # Create the settings file if it doesn't exist
+        settings_path = os.path.join(full_save_path, "snap_potential.in")
+        if not os.path.exists(settings_path):
+            settings_path = self.write_settings_file(
+                full_save_path,
+                # use these values if weights are greater than 0
+                energy_weight > 0,
+                force_weight > 0,
+                stress_weight > 0,
+            )
+        # Import lines
+        import_lines = ('from orchestrator.utils.setup_input import '
+                        'init_and_validate_module_type\n')
 
-        if "zbl" in data:
+        # Potential dictionary with all hyperparameters
+        potential_dict = {
+            'potential_type': 'SNAP',
+            'potential_args': {
+                'species': self.species,
+                'cutoff_radius': self.hyperparameters.cutoff_radius,
+                'rfac0': self.hyperparameters.rfac0,
+                'two_j_max': self.hyperparameters.two_j_max,
+                'quadratic': self.hyperparameters.quadratic,
+                'rmin0': self.hyperparameters.rmin0,
+                'wj': self.hyperparameters.wj,
+                'radelem': self.hyperparameters.radelem,
+                'use_zbl': self.hyperparameters.use_zbl,
+                'wselfallflag': self.hyperparameters.wselfallflag,
+                'chemflag': self.hyperparameters.chemflag,
+                'bzeroflag': self.hyperparameters.bzeroflag,
+                'template': settings_path,
+            }
+        }
 
-            (lower_cutoff, upper_cutoff, atomic_number_pairs,
-             atomic_numbers) = self._get_zbl_cutoffs(fitsnap_mod_file)
+        # Initialize potential
+        init_potential = ('potential = init_and_validate_module_type('
+                          f'"potential", {potential_dict}, '
+                          'single_input_dict=True)\n')
 
-            n = len(atomic_numbers)
+        # Storage dictionary
+        storage_dict = {
+            'storage_type':
+            storage.factory_token if hasattr(storage, 'factory_token') else
+            storage.__class__.__name__,
+            'storage_args':
+            storage.storage_init_args
+            if hasattr(storage, 'storage_init_args') else {}
+        }
 
-            param_path = os.path.split(self.parameter_path)[0]
-            hybridparam_file = os.path.join(param_path,
-                                            "fitsnap_potential.hybridparam")
-            zbl_pair_file = os.path.join(param_path, "zbl.pair")
+        # Initialize storage
+        init_storage = ('storage = init_and_validate_module_type("storage", '
+                        f'{storage_dict}, single_input_dict=True)')
 
-            with open(hybridparam_file, "w") as f2:
-                f2.write("# Number of elements for the hybrid style\n")
-                f2.write(f"{n}\n")
-                f2.write("\n")
-                f2.write("# Element names\n")
-                species_string = ""
-                for number in atomic_numbers:
-                    element = periodictable.elements[number].symbol
-                    species_string += element
-                    species_string += " "
-                f2.write(species_string + "\n")
-                f2.write("\n")
-                f2.write("# zbl inner outer\n")
-                f2.write("zbl " + str(lower_cutoff) + " " + str(upper_cutoff))
-                f2.write("\n")
-                f2.write("\n")
-                f2.write("# Element_1 Element_2 zbl Z_1 Z_2\n")
-                for pair in atomic_number_pairs:
-                    atomic_number2 = str(pair[0])
-                    atomic_number1 = str(pair[1])
-                    element1 = periodictable.elements[pair[0]].symbol
-                    element2 = periodictable.elements[pair[1]].symbol
-                    pair_line = ""
-                    pair_line += element1
-                    pair_line += " "
-                    pair_line += element2
-                    pair_line += " zbl "
-                    pair_line += atomic_number1
-                    pair_line += " "
-                    pair_line += atomic_number2
-                    f2.write(pair_line)
-                    f2.write("\n")
-
-                f2.write("\n")
-            f2.close()
-            if self.kim_item_type == "portable-model":
-                return [hybridparam_file]
-
-            if self.kim_item_type == "simulator-model":
-                with open(zbl_pair_file, "w") as f:
-                    for pair in atomic_number_pairs:
-                        atomic_number2 = str(pair[0])
-                        atomic_number1 = str(pair[1])
-                        element1 = periodictable.elements[pair[0]].symbol
-                        element2 = periodictable.elements[pair[1]].symbol
-                        f.write(element1 + " " + element2 + " zbl "
-                                + atomic_number1 + " " + atomic_number2)
-                return [hybridparam_file, zbl_pair_file]
-
+        # Handle per-atom weights
+        # If per_atom_weights is a numpy array or list, save it to a file
+        if isinstance(per_atom_weights, list):
+            np.savez(f'{full_save_path}/weights.npz', *per_atom_weights)
+            per_atom_weights_for_script = f"{full_save_path}/weights.npz"
+        # If per_atom_weights is a string (path), ensure it's an absolute path
+        elif isinstance(per_atom_weights, str):
+            if not os.path.isabs(per_atom_weights):
+                per_atom_weights_for_script = os.path.join(
+                    full_save_path, per_atom_weights)
             else:
-                raise TypeError("kim_item_type must be either"
-                                "'portable-model' or 'simulator-model'")
-
+                per_atom_weights_for_script = per_atom_weights
+        elif per_atom_weights is not None:
+            raise ValueError('per_atom_weights must be a list or str')
         else:
-            return None
+            per_atom_weights_for_script = None
 
-    def _get_zbl_cutoffs(self, fitsnap_mod_file):
-        """
-        Helper function to read required zbl parameters from the
-        fitsnap param_files when using zbl.
+        # Construct the training call
+        # this will construct the settings file based on the potential args
+        construct_and_train = (
+            f'model_path, error = potential.train('
+            f'dataset_list={dataset_list},'
+            f'storage=storage,'
+            f'workflow=None,'  # Don't use a workflow
+            f'energy_weight={energy_weight},'
+            f'force_weight={force_weight},'
+            f'stress_weight={stress_weight},'
+            f'train_frac={train_frac},'
+            f'test_frac={test_frac},'
+            f'val_frac={val_frac},'
+            'write_training_script=False,')
 
-        :param fitsnap_mod_file: path to the .mod parameter file
-            that specifies the zbl cutoffs
-        :type fitsnap_mod_file: str
-        """
+        if per_atom_weights_for_script:
+            construct_and_train += ('per_atom_weights='
+                                    f'"{per_atom_weights_for_script}")')
+        else:
+            construct_and_train += 'per_atom_weights=None)'
 
-        with open(fitsnap_mod_file, "r") as f:
-            data = f.read()
+        # Combine the script components
+        script = '\n'.join([
+            import_lines, init_storage, init_potential, construct_and_train,
+            '\nprint(f"Training complete. Model saved at: {model_path}")',
+            'print(f"Training error: {error}")'
+        ])
 
-        data = data.split("\n")
-        limit_line = "pair_style hybrid/overlay zbl"
-        pair_line = "pair_coeff * * zbl"
-        lower_cutoff = None
-        upper_cutoff = None
+        # Write the script to file
+        script_path = os.path.join(full_save_path, self.training_script_name)
+        with open(script_path, 'w') as fout:
+            fout.write(script)
 
-        atomic_numbers = set()
+        self.logger.info(f"Created training script: {script_path}")
+        return self.training_script_name
 
-        for line in data:
-            if limit_line in line:
-                words = line.split(" ")
-                for word in words:
-                    try:
-                        num = float(word)
-                        if not lower_cutoff:
-                            lower_cutoff = num
-                        else:
-                            upper_cutoff = num
-                    except ValueError:
-                        pass
-            elif pair_line in line:
-                words = line.split(" ")
-                for word in words:
-                    try:
-                        num = int(word)
-                        atomic_numbers.add(num)
-                    except ValueError:
-                        pass
-
-        atomic_number_pairs = []
-
-        for result in itertools.combinations_with_replacement(
-                atomic_numbers, 2):
-            atomic_number_pairs.append(result)
-
-        return lower_cutoff, upper_cutoff, atomic_number_pairs, atomic_numbers
-
-    def install_potential_in_kim_api(
+    def train(
         self,
-        potential_name='kim_potential',
-        model_defn=None,
-        model_init=None,
-        install_locality='user',
-        save_path='.',
-        import_into_kimkit=True,
-    ) -> None:
+        dataset_list: list[str],
+        storage: Storage,
+        workflow: Workflow,
+        energy_weight: float = 1.0,
+        force_weight: float = 1.0,
+        stress_weight: float = 1.0,
+        train_frac: float = 1.0,
+        test_frac: float = 0.0,
+        val_frac: float = 0.0,
+        per_atom_weights: Optional[Union[list[np.ndarray], str]] = None,
+        **kwargs,
+    ) -> tuple[str, float]:
         """
-        set up potential so it can be used externally
+        Train the potential using the provided data.
 
-        For a KIM model, this entails installing the potential into the KIM API
+        Note that this function will automatically apply per-atom masking (set
+        loss contribution to zero for masked atoms)if SELECTION_MASK_KEY is set
+        in the atoms.info dictionaries.
 
-        :param potential_name: name of the potential.,
-            |default| 'kim_potential'
-        :type potential_name: str
-        :param model_defn: for simulator-models, commands needed to
-            initialize the potential in the simulator (typically LAMMPS)
-        :type model_defn: str
-        :param install_locality: kim-api-collections-management collection
-            to install into. Options include "user", "system", "CWD",
-            and "environment" |default| "user"
-        :type install_locality: str
-        :param save_path: location where the files associated with the
-            potential are on disk. The files should already be written
-            to save_path. |default| "."
+        :param dataset_list: list of dataset handles to use for training
+        :type dataset_list: list[str]
+        :param storage: Storage object to access training data
+        :type storage: Storage
+        :param workflow: Workflow object for job management
+        :type workflow: Workflow
+        :param energy_weight: Weight for energy terms in the loss function
+        :type energy_weight: float
+        :param force_weight: Weight for force terms in the loss function
+        :type force_weight: float
+        :param stress_weight: Weight for stress terms in the loss function
+        :type stress_weight: float
+        :param train_frac: Fraction of data to use for training
+        :type train_frac: float
+        :param test_frac: Fraction of data to use for testing
+        :type test_frac: float
+        :param val_frac: Fraction of data to use for validation
+        :type val_frac: float
+        :param per_atom_weights: Controls per-atom weighting
+        :type per_atom_weights: Union[list[np.ndarray], str]
+        :param kwargs: Additional potential-specific training parameters
+
+        :returns: Tuple containing (path to trained potential, training error)
+        :rtype: tuple[str, float]
         """
-        param_files = self._init_param_files(dest_path=self.parameter_path)
-        sorted_param_files = self._sort_param_files(param_files)
-        potential_files = []
-        for file in param_files:
-            if file not in sorted_param_files:
-                potential_files.append(file)
-        self.potential_files = potential_files
-        self.param_files = sorted_param_files
+        # Check if required inputs are provided
+        if dataset_list is None or storage is None:
+            raise ValueError(
+                'A storage object and list of dataset handles are required!')
 
-        if self.kim_item_type == "portable-model":
-            try:
-                self.model_driver
-            except AttributeError:
-                # default to openkim snap model driver if none supplied
-                self.model_driver = "SNAP__MD_536750310735_000"
-        return super().install_potential_in_kim_api(
-            potential_name=potential_name,
-            model_defn=model_defn,
-            model_init=model_init,
-            install_locality=install_locality,
-            save_path=save_path,
-            import_into_kimkit=import_into_kimkit)
+        if train_frac < 1:
+            raise ValueError(
+                '`train_frac` < 1 is not supported for FitSNAP yet, '
+                f'but was set to {train_frac}')
+        if test_frac > 0:
+            raise ValueError('`test_frac` is not supported for FitSNAP yet, '
+                             f'but was set to {test_frac}')
+        if val_frac > 0:
+            raise ValueError('`val_frac` is not supported for FitSNAP yet, '
+                             f'but was set to {val_frac}')
 
-    def _init_param_files(self, dest_path) -> None:
-        """
-        Write out the potential's current parameters to dest_path,
-        record the paths to all of the parameter files and set them
-        as members of self.param_files.
+        # Create working directory
+        if workflow is None:
+            # this is the case when running from a training script to avoid
+            # making nested dirs
+            working_path = '.'
+            # in this case the settings file has already been generated
+            settings_file = 'snap_potential.in'
+        else:
+            working_path = workflow.make_path(self.__class__.__name__,
+                                              'training')
+            settings_file = self.write_settings_file(
+                working_path,
+                # use these values if weights are greater than 0
+                energy_weight > 0,
+                force_weight > 0,
+                stress_weight > 0,
+            )
 
-        :param dest_path: where to save parameter files
-        :type dest_path: str
-        """
+        snap = FitSnap(settings_file, arglist=["--overwrite"])
 
-        # why is this an input argument if we overwrite it?
-        dest_path = self.parameter_path
+        # Convert dataset list to a list if it isn't already
+        if not isinstance(dataset_list, list):
+            dataset_list = [dataset_list]
 
-        try:
-            param_path = os.path.split(dest_path)[0]
-            self._write_potential_to_file(path=param_path)
-        except TypeError:
-            return []
+        # Collect all configurations from the dataset
+        self.logger.info('Reading training data from storage')
+        combined_dataset = []
+        for dataset_handle in dataset_list:
+            configs = storage.get_data(dataset_handle)
+            combined_dataset.extend(configs)
 
-        try:
-            param_files = [
-                os.path.join(param_path, file)
-                for file in os.listdir(param_path)
+        # Format data for FitSnap
+        snap.data = [
+            self._collate_fitsnap_data(
+                atoms,
+                energy_weight,
+                force_weight,
+                stress_weight,
+            ) for atoms in combined_dataset
+        ]
+        self.logger.info(f"Found {len(snap.data)} configurations")
+
+        # Handle per-atom weighting - convert to concatenated list
+        if per_atom_weights is not None:
+            if isinstance(per_atom_weights, str):
+                weights_path = per_atom_weights
+                npzfile = np.load(per_atom_weights)
+                per_atom_weights = [npzfile[name] for name in npzfile.files]
+            elif isinstance(per_atom_weights, list):
+                weights_path = None
+            else:
+                raise TypeError('per_atom_weights not a supported type!')
+
+            for atoms, weights in zip(combined_dataset,
+                                      per_atom_weights,
+                                      strict=True):
+                assert len(atoms) == len(weights), (
+                    "Per-atom weight array "
+                    f"length ({len(weights)}) does not match atoms length "
+                    f"({len(atoms)}). Maybe they were provided in the wrong "
+                    "order?")
+            weights = np.concatenate(per_atom_weights)
+            per_atom_fit = True
+        else:
+            weights_path = None
+            per_atom_fit = False
+
+        # Process the configurations
+        snap.process_configs()
+
+        # Apply per-atom weights if enabled
+        if per_atom_fit:
+            row_types = snap.pt.fitsnap_dict['Row_Type']
+            manually_created_w_array = np.zeros(
+                len(snap.pt.shared_arrays['w'].array))
+            force_rows = [
+                True if row == 'Force' else False for row in row_types
             ]
 
-            # only these file extensions
-            # should be in the fitsnap param files
-            good_extensions = ("snapparam", "snapcoeff", "hybridparam", "pair")
+            assert (len(weights) * 3) == sum(force_rows), \
+                f"{len(weights)} weights given, need {sum(force_rows) / 3}"
 
-            filtered_param_files = []
+            energy_rows = [
+                True if row == 'Energy' else False for row in row_types
+            ]
+            stress_rows = [
+                True if row == 'Stress' else False for row in row_types
+            ]
 
-            for file in param_files:
-                for extension in good_extensions:
-                    if extension in file:
-                        filtered_param_files.append(file)
+            # Modify energy weights based on per-atom weights
+            if energy_weight > 1 and np.any(energy_rows):
+                force_row_counter = 0
+                energy_idxs = np.flatnonzero(energy_rows)
+                for config, energy_idx in zip(combined_dataset, energy_idxs):
+                    num_atoms = len(config)
+                    use_all_atoms = np.all(
+                        weights[force_row_counter:force_row_counter
+                                + num_atoms])
+                    force_row_counter += num_atoms
+                    if use_all_atoms:
+                        manually_created_w_array[energy_idx] = energy_weight
+                    else:
+                        manually_created_w_array[energy_idx] = 0
+            else:
+                manually_created_w_array[energy_rows] = energy_weight
 
-            self.param_files = filtered_param_files
-        except Exception:
-            raise
+            manually_created_w_array[force_rows] = force_weight * \
+                np.array([val for val in weights.tolist() for _ in range(3)])
+            manually_created_w_array[stress_rows] = stress_weight
 
-        return filtered_param_files
+            snap.pt.shared_arrays['w'].array = manually_created_w_array
 
-    def _write_smspec(self,
-                      potential_type='snap',
-                      model_defn=None,
-                      model_init=None,
-                      work_dir="."):
+        # Perform the fit
+        snap.solver.perform_fit()
+
+        # Analyze error metrics
+        snap.solver.error_analysis()
+
+        # Save the trained model
+        self._write_trained_files(snap, working_path)
+
+        # Write a training script for documentation and reproducibility
+        # Only write it if not explicitly disabled in kwargs
+        if kwargs.get('write_training_script', True):
+            if weights_path:
+                # revert value back to input string to avoid re-saving
+                per_atom_weights = weights_path
+            self._write_training_script(
+                working_path,
+                dataset_list,
+                storage,
+                energy_weight,
+                force_weight,
+                stress_weight,
+                train_frac,
+                test_frac,
+                val_frac,
+                per_atom_weights,
+            )
+
+        # Initialize the calculator with the trained model
+        self._initialize_calculator()
+
+        # Return trained model path and error metric
+        return working_path, snap.solver.errors.get('MAE_Energy', 0.0)
+
+    def _collate_fitsnap_data(
+        self,
+        atoms: Atoms,
+        energy_weight: float,
+        force_weight: float,
+        stress_weight: float,
+    ) -> dict:
         """
-        Helper method to write the auxillary file smspec.edn,
-        which is used by the KIM_API to build simulator-models.
+        Function to organize fitting data for FitSNAP from ASE atoms objects.
 
-        :param potential_type: what type of potential object this is,
-            (e.g. fitsnap, dnn, etc.)
-        :type potential_type: str
-        :param model_defn: for simulator-models, commands needed to
-            define the potential in the simulator (typically LAMMPS)
-        :type model_defn: str
-        :param model_init: optional for simulator-models, commands needed to
-            initialize the potential in the simulator (typically LAMMPS)
-        :type model_init: str
-        :param work_dir: where to save the file
-        :type work_dir: str
-        """
-        if model_defn is None:
-
-            # if a model_defn is provided, let it override default behavior
-            param_path = os.path.split(self.parameter_path)[0]
-            all_files = os.listdir(param_path)
-            for file in all_files:
-                if ".mod" in file:
-                    snapmod_file = os.path.join(param_path, file)
-
-            model_defn = None
-            for file in self.param_files:
-                if "zbl.pair" in file:
-                    lower_cutoff, upper_cutoff, __, __ = self._get_zbl_cutoffs(
-                        snapmod_file)
-                    model_defn = [
-                        ("pair_style hybrid/overlay "
-                         f"zbl {lower_cutoff} {upper_cutoff} snap"),
-                        ("pair_coeff * *"
-                         " snap @<parameter-file-1>@"
-                         " @<parameter-file-2>@ @<atom-type-sym-list>@"),
-                        ("KIM_SET_TYPE_PARAMETERS"
-                         " pair @<parameter-file-3>@ @<atom-type-sym-list>@")
-                    ]
-                    break
-
-        super()._write_smspec(potential_type, model_defn, model_init, work_dir)
-
-    def convert_input_file_to_dict(self, path) -> dict:
-        """
-        Reads a fitsnap input file and creates a dictionary of the contents
-
-        :param path: path to the input file to be read
-        :type path: str
-        :returns input_settings_dict: settings read from FitSNAP input file
-        :rtype input_settings_dict: dict
-        """
-        c = configparser.ConfigParser()
-        c.optionxform = str
-        c.read(path)
-        input_settings_dict = {s: dict(c.items(s)) for s in c.sections()}
-
-        return input_settings_dict
-
-    def create_fitsnap_input_file(self, settings, path) -> None:
-        """
-        Creates a FitSNAP input file from a settings dictionary
-
-        See https://fitsnap.github.io/Run/Run_input.html for fitsnap input
-        documentation. Dictionary should follow the same hierarchical format.
-        See sister function convert_input_file_to_dict().
-
-        :param settings: dictionary of FitSNAP settings
-        :type settings: dict
-        :param path: location to save the FitSNAP input file
-        :type path: str
-        """
-        c = configparser.ConfigParser()
-        c.optionxform = str
-        for key, val in settings.items():
-            c[key] = val
-
-        with open(path, 'w') as f:
-            c.write(f)
-
-        return None
-
-    def _check_hashes(self) -> bool:
-        """
-        Checks the hashes in the training files against the saved one.
-
-        Checks *.mod, *.snapcoeff, and *.snapparam at the parameter_path
-        to see if they have the hash value from the last training of the
-        potential.
-        """
-        for file_suffix in ['/*.mod', '/*.snapcoeff', '/*.snapparam']:
-            for filepath in glob.glob(self.parameter_path + file_suffix):
-                with open(filepath, 'r') as f:
-                    for line in f.readlines():
-                        if "Hash:" in line.split():
-                            f_hash = line.split().index("Hash:")
-                            if f_hash != self.training_hash:
-                                return False
-        return True
-
-    def get_params(self):
-        """
-        return the parameters of the potential in a human readable format
-
-        :returns: parameters read from the .snapcoeff file
+        :param atoms: ASE atoms object for a single configuration of atoms.
+        :param energy_weight: Weight for energy terms in the loss function
+        :param force_weight: Weight for force terms in the loss function
+        :param stress_weight: Weight for stress terms in the loss function
+        :returns: data dictionary in FitSNAP format for a single configuration.
         :rtype: dict
         """
-        try:
-            # *.snapcoeff is sorted to be the first param_file
-            with open(self.param_files[0], 'r') as f:
-                lines = f.readlines()
-                # TODO: check how this is formatted for different 2J max
-                num_species, num_coeff_each = [
-                    int(a) for a in lines[2].split()
-                ]
-                species = []
-                radelem = []
-                wj = []
-                coeffs = []
-                coeff_labels = []
-                for i in range(num_species + 1):
-                    a, b, c = lines[i * (num_coeff_each + 1) + 3].split()
-                    species.append(a)
-                    radelem.append(float(b))
-                    wj.append(float(c))
-                    data = []
-                    labels = []
-                    data_start = i * (num_coeff_each + 1) + 3 + 1
-                    data_end = (i + 1) * (num_coeff_each + 1) + 3
-                    for k in range(data_start, data_end + 1):
-                        split_line = lines[k].split()
-                        data.append(float(split_line[0]))
-                        labels.append(split_line[-1])
-                    coeffs.append(data)
-                    coeff_labels.append(labels)
+        from ..utils.data_standard import ENERGY_KEY, FORCES_KEY, STRESS_KEY
+        from fitsnap3lib.scrapers.ase_funcs import get_apre
 
-                snapcoeff_data = {
-                    'species': species,
-                    'radelems': radelem,
-                    'wjs': wj,
-                    'coeffs': coeffs,
-                    'coeff_labels': coeff_labels
-                }
-        except Exception:
-            raise
+        # Transform ASE cell to be appropriate for LAMMPS
+        apre = get_apre(cell=atoms.cell)
+        r = np.dot(np.linalg.inv(atoms.cell), apre)
+        positions = np.matmul(atoms.get_positions(), r)
+        cell = apre.T
 
-        return snapcoeff_data
+        # Make a data dictionary for this config
+        data = {}
+        data['Group'] = None
+        data['File'] = None
 
-    def get_metadata(self):
-        """
-        return the relevant metadata about the potential
-        """
-        raise NotImplementedError
+        # Handle stress tensor
+        if STRESS_KEY in atoms.info:
+            data['Stress'] = np.array(atoms.info[STRESS_KEY])
+            if data['Stress'].shape[0] == 6:
+                data['Stress'] = self._convert_to_3x3_stress_tensor(
+                    data['Stress'])
+            elif data['Stress'].shape != (3, 3):
+                raise ValueError(
+                    'Stress tensor not supplied as 6, or 3x3 formats')
+        else:
+            # Default to zeros if no stress data is available
+            data['Stress'] = np.zeros((3, 3))
 
-    def get_hyperparameters(self):
+        data['Positions'] = positions
+        data['Energy'] = atoms.info.get(ENERGY_KEY, 0.0)
+        data['AtomTypes'] = atoms.get_chemical_symbols()
+        data['NumAtoms'] = len(atoms)
+
+        # Get forces or set to zeros if not available
+        if FORCES_KEY in atoms.arrays:
+            data['Forces'] = atoms.arrays[FORCES_KEY]
+        else:
+            data['Forces'] = np.zeros((len(atoms), 3))
+
+        data['QMLattice'] = cell
+        data['test_bool'] = 0
+        data['Lattice'] = cell
+        data['Rotation'] = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+        data['Translation'] = np.zeros((len(atoms), 3))
+
+        # Inject the weights
+        data['eweight'] = energy_weight
+        data['fweight'] = force_weight
+        data['vweight'] = stress_weight
+
+        return data
+
+    def _convert_to_3x3_stress_tensor(
+        self,
+        stress_vector: np.ndarray,
+    ) -> np.ndarray:
         """
-        return the relevant hyperparameters of the potential
+        Convert the (6,) stress vector to 3x3 expected by FitSNAP
+
+        :param stress_vector: 6 stress components (Voigt notation)
+        :type stress_vector: np.ndarray
+        :returns: transformed matrix in full 3x3 format
+        :rtype: np.ndarray
         """
-        # untrained can report back the values from settings_path,
-        # or possibly directly from potential.model if built
-        # trained can exist with no settings; just the param_files
-        # SNAP param files sufficient but not exhaustive
-        raise NotImplementedError
+        return np.array([
+            [stress_vector[0], stress_vector[5], stress_vector[4]],
+            [stress_vector[5], stress_vector[1], stress_vector[3]],
+            [stress_vector[4], stress_vector[3], stress_vector[2]],
+        ])
+
+    def write_settings_file(
+        self,
+        output_dir: str,
+        use_energy: bool = True,
+        use_force: bool = True,
+        use_stress: bool = True,
+    ) -> str:
+        """
+        Generate a FitSNAP input file from template using class attributes.
+
+        This method creates a FitSNAP input file by filling in a template with
+        values from the SNAPPotential class hyperparameters and other
+        attributes. The generated file follows the FitSNAP configuration format
+        with sections for BISPECTRUM parameters, CALCULATOR settings, SOLVER
+        options, OUTFILE specifications, and REFERENCE information.
+
+        The template is rendered using Jinja2 templating with replacements for
+        various parameters like number of types, bispectrum components, cutoff
+        radius, etc. The method automatically handles the conversion of single
+        values to lists when appropriate for parameters like wj and radelem.
+
+        :param output_dir: Directory where the file should be written
+        :type output_dir: str
+        :param use_energy: Whether to include energy terms in training
+            (energy_flag=1)
+        :type use_energy: bool
+        :param use_force: Whether to include force terms in training
+            (force_flag=1)
+        :type use_force: bool
+        :param use_stress: Whether to include stress terms in training
+            (stress_flag=1)
+        :type use_stress: bool
+        :returns: Path to the generated settings file
+        :rtype: str
+        """
+        import periodictable
+        from ..utils.templates_jinja import render_template_to_file
+
+        # Get atomic numbers for species (used for ZBL potential)
+        species_atomic_numbers = []
+        for element in self.species:
+            try:
+                atomic_number = getattr(periodictable.elements, element).number
+                species_atomic_numbers.append(atomic_number)
+            except AttributeError:
+                # Handle the case where element is not found in periodictable
+                self.logger.warning(
+                    f"Could not find atomic number for {element}")
+                species_atomic_numbers.append(0)  # Placeholder
+
+        # Get ZBL flag from hyperparameters
+        use_zbl = self.hyperparameters.use_zbl
+
+        # Process per-species parameters
+        num_species = len(self.species)
+
+        # Handle wj (weights for each species)
+        if isinstance(self.hyperparameters.wj, list):
+            wj_values = self.hyperparameters.wj
+        else:
+            wj_values = [self.hyperparameters.wj] * num_species
+
+        # Handle radelem (radii for each species)
+        if isinstance(self.hyperparameters.radelem, list):
+            radelem_values = self.hyperparameters.radelem
+        else:
+            radelem_values = [self.hyperparameters.radelem] * num_species
+
+        # set training flags
+        energy_flag = 1 if use_energy else 0
+        force_flag = 1 if use_force else 0
+        stress_flag = 1 if use_stress else 0
+
+        # Create replacements dictionary with values from class attributes
+        replacements = {
+            # BISPECTRUM section
+            'num_types':
+            num_species,
+            'two_j_max':
+            self.hyperparameters.two_j_max,
+            'rcutfac':
+            self.hyperparameters.cutoff_radius,
+            'rfac0':
+            self.hyperparameters.rfac0,
+            'rmin0':
+            self.hyperparameters.rmin0,
+            'wj':
+            wj_values if num_species > 1 else self.hyperparameters.wj,
+            'radelem':
+            radelem_values
+            if num_species > 1 else self.hyperparameters.radelem,
+            'types':
+            ' '.join(self.species),
+            'quadraticflag':
+            1 if self.hyperparameters.quadratic else 0,
+            'wselfallflag':
+            self.hyperparameters.wselfallflag,
+            'chemflag':
+            self.hyperparameters.chemflag,
+            'bzeroflag':
+            self.hyperparameters.bzeroflag,
+
+            # CALCULATOR section
+            'train_energy':
+            energy_flag,
+            'train_force':
+            force_flag,
+            'train_stress':
+            stress_flag,
+
+            # OUTFILE section
+            'metrics_file':
+            'snap_potential.md',
+            'potential_name':
+            'snap_potential',
+
+            # REFERENCE section - use generic defaults
+            'units':
+            'metal',
+            'atom_style':
+            'atomic',
+            'use_zbl':
+            use_zbl,
+            'species_atomic_numbers':
+            species_atomic_numbers,
+        }
+
+        # Generate the output filename
+        output_file_name = "snap_potential.in"
+
+        # Render the template to a file
+        rendered_file = render_template_to_file(
+            template_path=self.template,
+            output_dir=output_dir,
+            replacements=replacements,
+            output_file_name=output_file_name)
+
+        # Return the full path to the generated file
+        return os.path.join(output_dir, rendered_file)
+
+    def _write_trained_files(self, snap_obj: FitSnap, path: str):
+        """
+        Save the trained SNAP potential files to disk.
+
+        This method takes the trained FitSnap object and writes all required
+        potential files to the specified directory. It sets the output paths
+        in the FitSnap configuration, generates the potential files
+        (snapcoeff, snapparam, mod, md), and updates the internal state to
+        reflect the available files.
+
+        :param snap_obj: The trained FitSnap object containing model
+            coefficients and errors
+        :type snap_obj: FitSnap
+        :param path: Directory path where the trained model files should be
+            saved
+        :type path: str
+        :return: None
+        """
+        self.logger.info(f'Saving model state in {path}')
+        vars(snap_obj.config.sections['OUTFILE'])['potential_name'] = \
+            path + '/snap_potential'
+        vars(snap_obj.config.sections['OUTFILE'])['metric_file'] = \
+            path + '/snap_potential.md'
+
+        fit_coefficients = snap_obj.solver.fit
+        errors = snap_obj.solver.errors
+        snap_obj.output.output(fit_coefficients, errors)
+
+        # Update potential_files with paths to all required and optional files
+        self.potential_files = {
+            "snap_potential.snapparam": f"{path}/snap_potential.snapparam",
+            "snap_potential.snapcoeff": f"{path}/snap_potential.snapcoeff",
+            "snap_potential.mod": f"{path}/snap_potential.mod",
+            "snap_potential.md": f"{path}/snap_potential.md",
+            "snap_potential.in": f"{path}/snap_potential.in",
+            "training_script.py": f"{path}/{self.training_script_name}",
+        }
+
+        # Set _has_required_files to True since we now have all required files
+        self._has_required_files = True
+
+        self.training_hash = snap_obj.config.hash
+        self.logger.info(
+            f'Output fitsnap files with Hash: {self.training_hash}')
+
+    def submit_train(
+        self,
+        dataset_list: list[str],
+        storage: Storage,
+        workflow: Workflow,
+        job_details: Optional[dict] = None,
+        energy_weight: float = 1.0,
+        force_weight: float = 1.0,
+        stress_weight: float = 1.0,
+        train_frac: float = 1.0,
+        test_frac: float = 0.0,
+        val_frac: float = 0.0,
+        per_atom_weights: Optional[Union[list[np.ndarray], str]] = None,
+        **kwargs,
+    ) -> Union[str, int]:
+        """
+        Train the potential using the provided data via a submitted job
+
+        :param dataset_list: list of dataset handles to use for training
+        :type dataset_list: list[str]
+        :param storage: Storage object to access training data
+        :type storage: Storage
+        :param workflow: Workflow object for job management
+        :type workflow: Workflow
+        :param job_details: information controlling job submission
+        :type job_details: dict
+        :param energy_weight: Weight for energy terms in the loss function
+        :type energy_weight: float
+        :param force_weight: Weight for force terms in the loss function
+        :type force_weight: float
+        :param stress_weight: Weight for stress terms in the loss function
+        :type stress_weight: float
+        :param train_frac: Fraction of data to use for training
+        :type train_frac: float
+        :param test_frac: Fraction of data to use for testing
+        :type test_frac: float
+        :param val_frac: Fraction of data to use for validation
+        :type val_frac: float
+        :param per_atom_weights: Controls per-atom weighting
+        :type per_atom_weights: Union[list[np.ndarray], str]
+        :param kwargs: Additional potential-specific training parameters
+        :returns: calc id of the submitted job
+        :rtype: tuple[str, float]
+        """
+        if dataset_list is None or storage is None:
+            raise ValueError('A storage object and list of dataset handles'
+                             ' are required!')
+        if not isinstance(dataset_list, list):
+            dataset_list = [dataset_list]
+
+        if train_frac < 1:
+            raise ValueError(
+                '`train_frac` < 1 is not supported for FitSNAP yet, '
+                f'but was set to {train_frac}')
+        if test_frac > 0:
+            raise ValueError('`test_frac` is not supported for FitSNAP yet, '
+                             f'but was set to {test_frac}')
+        if val_frac > 0:
+            raise ValueError('`val_frac` is not supported for FitSNAP yet, '
+                             f'but was set to {val_frac}')
+
+        save_path = workflow.make_path(self.__class__.__name__, 'training')
+
+        script_filename = self._write_training_script(
+            save_path,
+            dataset_list,
+            storage,
+            energy_weight,
+            force_weight,
+            stress_weight,
+            train_frac,
+            test_frac,
+            val_frac,
+            per_atom_weights,
+        )
+
+        if job_details is None:
+            job_details = {}
+
+        job_details['custom_preamble'] = 'python'
+
+        calc_id = workflow.submit_job(
+            script_filename,
+            save_path,
+            job_details=job_details,
+        )
+
+        return calc_id
+
+    def load_from_submitted_training(
+        self,
+        calc_id: Union[str, int],
+        workflow: Workflow,
+    ):
+        """
+        Load a potential that was trained via a submitted job.
+
+        This method waits for the training job to complete (if it hasn't
+        already) and then loads the trained potential files from the job's
+        output directory. It uses the load_potential method to initialize the
+        SNAP potential from the trained files.
+
+        :param calc_id: The calculation ID returned by submit_train
+        :type calc_id: Union[str, int]
+        :param workflow: Workflow object used to manage the job
+        :type workflow: Workflow
+        :return: None
+        """
+        # include checks that training finished appropriately
+        workflow.block_until_completed(calc_id)
+
+        self.load_potential(workflow.get_job_path(calc_id))
+
+    def get_lammps_commands(self) -> str:
+        """
+        Extract required commands to inject into a LAMMPS input file to
+        enable using external potentials with direct LAMMPS interface
+
+        :returns: Commands to inject into LAMMPS input file to directly
+            run a LAMMPS simulation with an external SNAP potential
+        :rtype: str
+        """
+        if not self.potential_files:
+            raise ValueError(
+                "potential_files is not set on this Potential instance")
+
+        # Use the helper function to get all LAMMPS commands from mod file
+        lmpcmds = self._read_lammps_commands_from_mod()
+
+        # Join all commands with newlines
+        return "\n".join(lmpcmds)
+        

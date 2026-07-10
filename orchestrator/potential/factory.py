@@ -50,34 +50,62 @@ class PotentialBuilder(ModuleBuilder):
             potential_args = {}
 
         match potential_type:
-            case 'DNN':
-                from .dnn import KliffBPPotential
+            case 'nequip_allegro':
+                from .nequip_allegro import NequIPAllegroPotential
                 try:
-                    potential_factory.add_new_module('DNN', KliffBPPotential)
+                    potential_factory.add_new_module('nequip_allegro',
+                                                     NequIPAllegroPotential)
                 except ModuleAlreadyInFactoryError:
                     pass
-            case 'KIM':
-                from .kim import KIMPotential
+            case 'SNAP':
+                from .fitsnap import SNAPPotential
                 try:
-                    potential_factory.add_new_module('KIM', KIMPotential)
+                    potential_factory.add_new_module('SNAP', SNAPPotential)
                 except ModuleAlreadyInFactoryError:
                     pass
-            case 'FitSnap':
-                from .fitsnap import FitSnapPotential
-                try:
-                    potential_factory.add_new_module('FitSnap',
-                                                     FitSnapPotential)
-                except ModuleAlreadyInFactoryError:
-                    pass
-            case 'ChIMES':
-                from .chimes import ChIMESPotential
-                try:
-                    potential_factory.add_new_module('ChIMES', ChIMESPotential)
-                except ModuleAlreadyInFactoryError:
-                    pass
+            # case 'DNN':
+            #     from .dnn import KliffBPPotential
+            #     try:
+            #         potential_factory.add_new_module('DNN', KliffBPPotential)
+            #     except ModuleAlreadyInFactoryError:
+            #         pass
+            # case 'KIM':
+            #     from .kim import KIMPotential
+            #     try:
+            #         potential_factory.add_new_module('KIM', KIMPotential)
+            #     except ModuleAlreadyInFactoryError:
+            #         pass
+            # case 'ChIMES':
+            #     from .chimes import ChIMESPotential
+            #     try:
+            #         potential_factory.add_new_module('ChIMES',
+            # ChIMESPotential)
+            #     except ModuleAlreadyInFactoryError:
+            #         pass
 
         potential_constructor = self.factory.select_module(potential_type)
-        built_class = potential_constructor(**potential_args)
+        # check if alternative initialization should be used
+        try:
+            initialization_from = potential_args.pop('initialize_from')
+        except KeyError:
+            initialization_from = 'default'
+        # use the proper constructor
+        if initialization_from == 'kim_id':
+            if hasattr(potential_constructor, 'initialize_from_kim'):
+                built_class = potential_constructor.initialize_from_kim(
+                    **potential_args)
+            else:
+                raise ValueError('kim_id supplied but this potential type '
+                                 'does not support instantiation from KIM ID')
+        elif initialization_from == 'potential_files':
+            built_class = potential_constructor.initialize_from_files(
+                **potential_args)
+        elif initialization_from == 'default':
+            built_class = potential_constructor(**potential_args)
+        else:
+            raise ValueError('initialize_from is specified but is not one of '
+                             'the supported keys: ["default", "kim_id", '
+                             '"potential_files"]')
         built_class.factory_token = potential_type
         return built_class
 
