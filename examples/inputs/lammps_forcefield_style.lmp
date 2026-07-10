@@ -1,0 +1,11 @@
+#-------------------------------------------------------------
+# FORCE FIELD STYLE
+#-------------------------------------------------------------
+
+#Set Styles
+atom_style		full
+bond_style		harmonic
+angle_style		harmonic
+dihedral_style  hybrid harmonic opls
+improper_style  harmonic
+pair_style      hybrid/overlay lj/cut 11.0 buck 11.0 coul/wolf 0.2 11.0

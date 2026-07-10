@@ -1,0 +1,262 @@
+# yamllint disable rule:line-length
+run: [train, test, val]
+
+cutoff_radius: 4.5
+model_type_names:
+- C
+- H
+- O
+chemical_species_to_atom_type_map:
+
+  C: C
+  H: H
+  O: O
+monitored_metric: train_loss_epoch/forces_weighted_loss
+
+data:
+  _target_: orchestrator.potential.nequip_allegro.ASEDataModuleWithID
+  seed: 456             # dataset seed for reproducibility
+
+  include_keys:
+  - weights
+
+  - atomic_weights
+  - global_atom_id
+  transforms:
+    # data doesn't usually come with a neighborlist -- this tranforms prepares the neighborlist
+  - _target_: nequip.data.transforms.NeighborListTransform
+    r_max: ${cutoff_radius}
+    # the models only know atom types, which can be different from the chemical species (e.g. C, H)
+    # for instance we can have data with different charge states of carbon, which means they are
+    # all labeled by chemical species `C`, but may have different atom type labels based on the charge states
+    # in this case, the atom types are the same as the chemical species, but we still have to include this
+    # transformation to ensure that the data has 0-indexed atom type lists used in the various model operations
+  - _target_: nequip.data.transforms.ChemicalSpeciesToAtomTypeMapper
+    model_type_names: ${model_type_names}
+    chemical_species_to_atom_type_map: ${chemical_species_to_atom_type_map}
+
+  train_dataloader:
+    _target_: torch.utils.data.DataLoader
+    batch_size: 2
+    num_workers: 2
+    shuffle: true
+  val_dataloader:
+    _target_: torch.utils.data.DataLoader
+    batch_size: 2
+    num_workers: ${data.train_dataloader.num_workers}
+  test_dataloader: ${data.val_dataloader}
+
+  # dataset statistics can be calculated to be used for model initialization such as for shifting, scaling and standardizing.
+  # it is advised to provide custom names -- you will have to retrieve them later under model to initialize certain parameters to the dataset statistics computed
+  stats_manager:
+    # dataset statistics is handled by the `DataStatisticsManager`
+    # here, we use `CommonDataStatisticsManager` for a basic set of dataset statistics for general use cases
+    # the dataset statistics include `num_neighbors_mean`, `per_atom_energy_mean`, `forces_rms`, `per_type_forces_rms`
+    _target_: nequip.data.CommonDataStatisticsManager
+    # dataloader kwargs for data statistics computation
+    # `batch_size` should ideally be as large as possible without trigerring OOM
+    dataloader_kwargs:
+      batch_size: 2
+    # we need to provide the same type names that correspond to the model's `type_names`
+    # so we interpolate the "central source of truth" model type names from above
+    type_names: ${model_type_names}
+
+
+  train_file_path:
+    /PATH/TO/training_set.xyz
+  test_file_path:
+    /PATH/TO/testing_set.xyz
+  val_file_path:
+    /PATH/TO/validation_set.xyz
+
+trainer:
+  _target_: lightning.Trainer
+  accelerator: cuda
+  enable_checkpointing: true
+  max_epochs: 10
+  log_every_n_steps: 5
+
+  callbacks:
+
+    # stop training when some criterion is met
+  - _target_: lightning.pytorch.callbacks.EarlyStopping
+    monitor: ${monitored_metric}              # validation metric to monitor
+    min_delta: 1e-3                           # how much to be considered a "change"
+    patience: 20                              # how many instances of "no change" before stopping
+
+    # checkpoint based on some criterion
+  - _target_: lightning.pytorch.callbacks.ModelCheckpoint
+    monitor: ${monitored_metric}              # validation metric to monitor
+    dirpath: ${hydra:runtime.output_dir}/${trainer.logger.name}      # use hydra output directory
+    filename: best                            # best.ckpt is the checkpoint name
+    save_last: true                           # last.ckpt will be saved
+
+    # log learning rate, e.g. to monitor what the learning rate scheduler is doing
+  - _target_: lightning.pytorch.callbacks.LearningRateMonitor
+    logging_interval: epoch
+
+
+  # use any Lightning supported logger
+  logger:
+    # Lightning wandb logger https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.loggers.wandb.html#module-lightning.pytorch.loggers.wandb
+    # _target_: lightning.pytorch.loggers.TensorBoardLogger
+    _target_: lightning.pytorch.loggers.csv_logs.CSVLogger
+    name: nequip_trainer_logger
+    save_dir: ${hydra:runtime.output_dir}  # use resolver to place wandb logs in hydra's output directory
+
+
+
+# NOTE:
+# interpolation parameters for Allegro model
+num_scalar_features: 32
+
+training_module:
+  _target_: orchestrator.potential.nequip_allegro.LTAULightningModule
+
+  # the ema decay parameter of an EMA model
+  ema_decay: 0.999
+
+  # here, we use a simplified MetricsManager wrapper (see docs) to construct the energy-force loss function
+  # the more general `nequip.train.MetricsManager` could also be used to configure a custom loss function
+  loss:
+    _target_: nequip.train.MetricsManager
+    metrics:
+    - name: forces_weighted_loss
+      coeff: 1.0
+      metric:
+        _target_: orchestrator.potential.nequip_allegro.WeightedLoss
+    - name: total_energy_mae
+      field: total_energy
+      coeff: 1.0
+      metric:
+        _target_: nequip.train.MeanAbsoluteError
+  val_metrics:
+    _target_: nequip.train.EnergyForceMetrics
+    coeffs:
+      total_energy_mae: 1.0
+      forces_mae: 1.0
+      # keys `total_energy_rmse` and `forces_rmse`, `per_atom_energy_rmse` and `per_atom_energy_mae` are also available
+
+  # we could have train_metrics and test_metrics be different from val_metrics, but it makes sense to have them be the same
+  train_metrics: ${training_module.val_metrics}  # use variable interpolation
+  test_metrics: ${training_module.val_metrics}  # use variable interpolation
+
+  optimizer:
+    _target_: torch.optim.Adam
+    lr: 0.001
+  # ^ IMPORTANT: Allegro models do better with learning rates around 1e-3
+
+  # see options for lr_scheduler_config
+  # https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.core.LightningModule.html#lightning.pytorch.core.LightningModule.configure_optimizers
+  lr_scheduler:
+    # any torch compatible lr sceduler
+    scheduler:
+      _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+      factor: 0.6
+      patience: 5
+      threshold: 0.2
+      min_lr: 1e-6
+    monitor: ${monitored_metric}
+    interval: epoch
+    frequency: 1
+
+  # to use the Allegro model in the NequIP framework, the following `model` block has to be changed to be that of Allegro's
+  # see Allegro model docs for explanation of model hyperparameters:
+  # https://nequip.readthedocs.io/projects/allegro/en/latest/guide/allegro_model.html
+    lr_scheduler_patience: 10
+  model:
+    _target_: allegro.model.AllegroModel
+
+    # If you have PyTorch >= 2.6.0 installed, and are training on GPUs, the following line uses torch.compile to speed up training
+    # for more details, see https://nequip.readthedocs.io/en/latest/guide/accelerations/pt2_compilation.html
+    # compile_mode: compile
+    # ^ if you're using PyTorch <= 2.6.0, an error will be thrown -- comment out the line to avoid it
+
+    # === basic model params ===
+    seed: 456
+    model_dtype: float32
+    type_names: ${model_type_names}
+    r_max: ${cutoff_radius}
+
+    # === two-body scalar embedding ===
+    radial_chemical_embed:
+      # the defaults for the Bessel embedding module are usually appropriate
+      _target_: allegro.nn.TwoBodyBesselScalarEmbed
+      num_bessels: 8
+      bessel_trainable: false
+      polynomial_cutoff_p: 6
+
+    # output dimension of the radial-chemical embedding
+    radial_chemical_embed_dim: ${num_scalar_features}
+
+    # scalar embedding MLP
+    scalar_embed_mlp_hidden_layers_depth: 1
+    scalar_embed_mlp_hidden_layers_width: ${num_scalar_features}
+    scalar_embed_mlp_nonlinearity: silu
+
+    # === core hyperparameters ===
+    # The following hyperparameters are the main ones that one should focus on tuning.
+
+    # maximum order l to use in spherical harmonics embedding, 1 is baseline (fast), 2 is more accurate, but slower, 3 highly accurate but slow
+    l_max: 1
+
+    # number of tensor product layers, 1-3 usually best, more is more accurate but slower
+    num_layers: 1
+
+    # number of scalar features, more is more accurate but slower
+    # 16, 32, 64, 128, 256 are good options to try depending on the dataset
+    num_scalar_features: ${num_scalar_features}
+
+    # number of tensor features, more is more accurate but slower
+    # 8, 16, 32, 64 are good options to try depending on the dataset
+    num_tensor_features: 32
+
+    # == allegro MLPs ==
+    # neural network parameters in the Allegro layers
+    allegro_mlp_hidden_layers_depth: 1
+    allegro_mlp_hidden_layers_width: ${num_scalar_features}
+    allegro_mlp_nonlinearity: silu
+    # ^ setting `nonlinearity` to `null` means that the Allegro MLPs are effectively linear layers
+
+    # === advanced hyperparameters ===
+    # The following hyperparameters should remain in their default states until the above core hyperparameters have been set.
+
+    # whether to include features with odd mirror parity
+    # often turning parity off gives equally good results but faster networks, so do consider this
+    parity: true
+
+    # whether the tensor product weights couple the paths and channels or not (otherwise the weights are only applied per-path)
+    # default is `true`, which is expected to be more expressive than `false`
+    tp_path_channel_coupling: true
+
+    # == readout MLP ==
+    # neural network parameters in the readout layer
+    readout_mlp_hidden_layers_depth: 1
+    readout_mlp_hidden_layers_width: ${num_scalar_features}
+    readout_mlp_nonlinearity: silu
+    # ^ setting `nonlinearity` to `null` means that output MLP is effectively a linear layer
+
+    # === misc hyperparameters ===
+    # average number of neighbors for edge sum normalization
+    avg_num_neighbors: ${training_data_stats:num_neighbors_mean}
+
+    # per-type per-atom scales and shifts
+    per_type_energy_shifts: ${training_data_stats:per_atom_energy_mean}
+    # ^ IMPORTANT: it is usually useful and important to use isolated atom energies computed with the same method used to generate the training data
+    #   they should be provided as a dict, e.g.
+    # per_type_energy_shifts:
+    #   C: 1.234
+    #   H: 2.345
+    #   O: 3.456
+    per_type_energy_scales: ${training_data_stats:forces_rms}
+    per_type_energy_scales_trainable: false
+    per_type_energy_shifts_trainable: false
+
+    # ZBL pair potential (optional, can be removed or included depending on aplication)
+    # see NequIP docs for details:
+    # https://nequip.readthedocs.io/en/latest/api/nn.html#nequip.nn.pair_potential.ZBL
+    pair_potential:
+      _target_: nequip.nn.pair_potential.ZBL
+      units: real     # Ang and kcal/mol, LAMMPS unit names;  allowed values "metal" and "real"
+      chemical_species: ${model_type_names}   # must tell ZBL the chemical species of the various model atom types
+  error_save_dir: ${hydra:runtime.output_dir}/${trainer.logger.name}
