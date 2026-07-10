@@ -231,6 +231,17 @@ def plot_force_magnitude_vs_force_angle_errors(
     angles = np.arccos(cosines) / np.pi
     magnitude_diff = (np.linalg.norm(potential_forces, axis=1)
                       - np.linalg.norm(gt_forces, axis=1))
+
+    # save data first
+    if save_path is None:
+        save_path = diagnostics_workflow.make_path('Diagnostics',
+                                                   'force_error_plots')
+
+    np.savetxt(save_path + '/force_angle_error_vs_magnitude_error.dat',
+               np.array([angles, magnitude_diff]).T,
+               fmt='%.8f',
+               header='angles_btw_forces\tmagnitude_difference')
+
     for i in range(2):
         if i == 0:
             # first subplot where the data are colored
@@ -241,14 +252,19 @@ def plot_force_magnitude_vs_force_angle_errors(
             # second subplot where the data are colored
             # by the probability density
             xy = np.vstack([angles, magnitude_diff])
-            if len(angles) <= 10000:
-                z = gaussian_kde(xy).pdf(xy)
-            else:
-                train_ids = np.random.choice(len(angles),
-                                             size=10000,
-                                             replace=False)
-                xy = np.vstack([angles, magnitude_diff])
-                z = gaussian_kde(xy[:, train_ids]).pdf(xy)
+            try:
+                if len(angles) <= 10000:
+                    z = gaussian_kde(xy).pdf(xy)
+                else:
+                    train_ids = np.random.choice(len(angles),
+                                                 size=10000,
+                                                 replace=False)
+                    xy = np.vstack([angles, magnitude_diff])
+                    z = gaussian_kde(xy[:, train_ids]).pdf(xy)
+                kde_good = True
+            except Exception:
+                z = np.linalg.norm(gt_forces, axis=1)
+                kde_good = False
             ind = np.argsort(z)
 
         im = axes[i].scatter(
@@ -269,8 +285,12 @@ def plot_force_magnitude_vs_force_angle_errors(
             title_text = 'colored by \nDFT force \nmagnitude'
             cbar_text = r'$| \bf{F} |\ \mathrm{(eV/\AA)}$'
         else:
-            title_text = 'colored by \ndata \ndensity'
-            cbar_text = r'$f(\delta_{\bf{F}}, \theta_{\bf{F}})$'
+            if kde_good:
+                title_text = 'colored by \ndata \ndensity'
+                cbar_text = r'$f(\delta_{\bf{F}}, \theta_{\bf{F}})$'
+            else:
+                title_text = 'colored by \nDFT force \nmagnitude'
+                cbar_text = r'$| \bf{F} |\ \mathrm{(eV/\AA)}$'
 
         axes[i].text(
             0.35,
@@ -306,10 +326,6 @@ def plot_force_magnitude_vs_force_angle_errors(
         fontsize=9,
     )
 
-    if save_path is None:
-        save_path = diagnostics_workflow.make_path('Diagnostics',
-                                                   'force_error_plots')
-
     fig.savefig(
         (save_path + '/force_angle_error_vs_magnitude_error'),
         dpi=400,
@@ -318,13 +334,167 @@ def plot_force_magnitude_vs_force_angle_errors(
 
     plt.close()
 
-    np.savetxt(save_path + '/force_angle_error_vs_magnitude_error.dat',
-               np.array([angles, magnitude_diff]).T,
-               fmt='%.8f',
-               header='angles_btw_forces\tmagnitude_difference')
-
     with open(save_path + '/readme.txt', 'w') as fin:
         fin.write(f'potential kim_id: {potential.kim_id}\n')
         fin.write(f'dataset id: {dataset_id}\n')
 
     return np.array([angles, magnitude_diff]).T
+
+
+def plot_force_magnitude_vs_force_angle_errors_from_file(
+        force_file: str,
+        save_path: str = None,
+        verbose: bool = False,):
+    """
+    This function computes the forces on individual atom in the configurations
+    obtained from the dataset from Storage using the provided potential,
+    (x, y, z), and compares them to ground truth DFT forces read from the
+    Storage, (x_gt, y_gt, z_gt). The angle difference between (x, y, z) and
+    (x_gt, y_gt, z_gt) is plotted versus their magnitude difference.
+    Each data point is colored by either the magnitude of ground truth force
+    or the probability density of the data.
+
+    :param potential: interatomic potential to be used for force computing.
+        It is a Potential object created by the Orchestrator.
+    :type potential: Potential
+    :param dataset_id: name of the dataset stored under Storage.
+    :type dataset_id: str
+    :param storage: location of the dataset. It is a Storage object created
+        by the Orchestrator.
+    :type storage: Storage
+    :param save_path: location to save the output figure and data files.
+    :type save_path: str
+    :param verbose: determines if detailed output should be displayed.
+        Defaults to False.
+    :type verbose: bool
+    :return: A NumPy array containing the processed force error data,
+        (angle_between_forces, force_magnitude_difference).
+    :rtype: np.ndarray
+    """
+
+    # read the data in from file
+    all_forces = np.loadtxt(force_file)
+    if verbose:
+        print(f'The dataset contains {len(all_forces)} force vectors')
+    gt_forces = all_forces[:,0:3] 
+
+    # compute the forces using the provided potential
+    potential_forces = all_forces[:,3:]
+
+    # plot the force errors as a function of force angles
+    fig, axes = plt.subplots(
+        1,
+        2,
+        sharex=True,
+        sharey=True,
+        subplot_kw={'box_aspect': 1.75},
+        layout='compressed',
+        figsize=(9, 2.5),
+    )
+    cm = matplotlib.colormaps['turbo']
+    cosines = cosine_sim(potential_forces, gt_forces)
+    angles = np.arccos(cosines) / np.pi
+    magnitude_diff = (np.linalg.norm(potential_forces, axis=1)
+                      - np.linalg.norm(gt_forces, axis=1))
+
+    # save data first
+    if save_path is None:
+        save_path = diagnostics_workflow.make_path('Diagnostics',
+                                                   'force_error_plots')
+
+    np.savetxt(save_path + '/force_angle_error_vs_magnitude_error.dat',
+               np.array([angles, magnitude_diff]).T,
+               fmt='%.8f',
+               header='angles_btw_forces\tmagnitude_difference')
+
+    for i in range(2):
+        if i == 0:
+            # first subplot where the data are colored
+            # by the DFT force magnitude
+            z = np.linalg.norm(gt_forces, axis=1)
+            ind = np.argsort(z)
+        else:
+            # second subplot where the data are colored
+            # by the probability density
+            xy = np.vstack([angles, magnitude_diff])
+            try:
+                if len(angles) <= 10000:
+                    z = gaussian_kde(xy).pdf(xy)
+                else:
+                    train_ids = np.random.choice(len(angles),
+                                                 size=10000,
+                                                 replace=False)
+                    xy = np.vstack([angles, magnitude_diff])
+                    z = gaussian_kde(xy[:, train_ids]).pdf(xy)
+                kde_good = True
+            except Exception:
+                z = np.linalg.norm(gt_forces, axis=1)
+                kde_good = False
+            ind = np.argsort(z)
+
+        im = axes[i].scatter(
+            angles[ind],
+            magnitude_diff[ind],
+            c=z[ind],
+            s=0.5,
+            edgecolors='none',
+            alpha=1.0,
+            cmap=cm,
+            vmin=0,
+            vmax=10,
+        )
+
+        axes[i].xaxis.set_major_formatter(tck.FormatStrFormatter('%g$\pi$'))
+        axes[i].xaxis.set_major_locator(tck.MultipleLocator(base=0.5))
+        if i == 0:
+            title_text = 'colored by \nDFT force \nmagnitude'
+            cbar_text = r'$| \bf{F} |\ \mathrm{(eV/\AA)}$'
+        else:
+            if kde_good:
+                title_text = 'colored by \ndata \ndensity'
+                cbar_text = r'$f(\delta_{\bf{F}}, \theta_{\bf{F}})$'
+            else:
+                title_text = 'colored by \nDFT force \nmagnitude'
+                cbar_text = r'$| \bf{F} |\ \mathrm{(eV/\AA)}$'
+
+        axes[i].text(
+            0.35,
+            0.8,
+            title_text,
+            transform=axes[i].transAxes,
+            fontsize=9,
+        )
+        axes[i].tick_params(axis='both', which='major', labelsize=7, width=0.5)
+        axes[i].set_ylim([-5, 5])
+        axes[i].set_xlim([0, 1])
+        for axis in ['top', 'bottom', 'left', 'right']:
+            axes[i].spines[axis].set_linewidth(0.5)
+
+        cbar = fig.colorbar(im, ax=axes[i], shrink=0.8, pad=0.05)
+        cbar.ax.tick_params(labelsize=7, width=0.5)
+        cbar.outline.set_linewidth(0.5)
+        cbar.set_label(cbar_text,
+                       math_fontfamily='cm',
+                       fontsize=9,
+                       loc='center',
+                       labelpad=-2)
+
+    fig.supxlabel(
+        r'$\theta_{\bf{F}} \ \mathrm{(rad)}$',
+        math_fontfamily='cm',
+        y=-0.08,
+        fontsize=9,
+    )
+    axes[0].set_ylabel(
+        r'$\delta_{\bf{F}} \ \mathrm{(eV/\AA)}$',
+        math_fontfamily='cm',
+        fontsize=9,
+    )
+
+    fig.savefig(
+        (save_path + '/force_angle_error_vs_magnitude_error.png'),
+        dpi=400,
+        bbox_inches='tight',
+    )
+
+    plt.close()

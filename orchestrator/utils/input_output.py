@@ -8,13 +8,11 @@ from typing import Optional
 
 from orchestrator.utils.data_standard import (ENERGY_KEY, FORCES_KEY,
                                               STRESS_KEY, METADATA_KEY)
-from orchestrator.oracle.aiida.espresso import AiidaEspressoOracle
-from orchestrator.oracle.aiida.vasp import AiidaVaspOracle
 from orchestrator.storage import Storage
 from orchestrator.utils.exceptions import DatasetDoesNotExistError
 
 
-def ase_glob_read(root_dir, file_ext='.xyz', file_format='extxyz'):
+def ase_glob_read(root_dir, file_ext='.xyz', file_format='extxyz', **kwargs):
     """
     Reads all ASE atoms objects in `root_dir` with the matching` file_ext.
     """
@@ -24,7 +22,7 @@ def ase_glob_read(root_dir, file_ext='.xyz', file_format='extxyz'):
 
     images = []
     for f in sorted(glob.glob(os.path.join(root_dir, f'*{file_ext}'))):
-        images += safe_read(f, format=file_format)
+        images += safe_read(f, format=file_format, **kwargs)
 
     return images
 
@@ -134,6 +132,8 @@ def read_in_external_calculations(
     :param dataset_handle: handle of an existing dataset to append the data to.
         Will be used in place of dataset_name if provided.
     """
+    from orchestrator.oracle.aiida.espresso import AiidaEspressoOracle
+    from orchestrator.oracle.aiida.vasp import AiidaVaspOracle
 
     # Check if paths are correct.
     incorrect = []

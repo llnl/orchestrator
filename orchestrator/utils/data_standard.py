@@ -21,6 +21,10 @@ FORCES_WEIGHTS_KEY = 'atomic_weights'
 METADATA_KEY = '_metadata'
 #: key for accessing per-atom selector boolean from internal Atoms arrays
 SELECTION_MASK_KEY = 'selection_mask'
+#: key for accessing per-atom molecular IDs from internal Atoms arrays
+MOL_ID_KEY = 'molecule_data_mol_id'
+#: key for accessing per-atom molecular types from internal Atoms arrays
+SITE_TYPE_KEY = 'molecule_data_site_type'
 
 # common "utility" property maps - pass with ** prefix
 # can be used to add selection_mask to the property map as:
@@ -33,6 +37,9 @@ METADATA_PROPERTY_MAP = {
         }
     }
 }
+# metadata does not require a property definition, it has special treatment
+
+# selection mask map and definition
 SELECTOR_PROPERTY_MAP = {
     'new_property_name': 'selection',
     'new_map': {
@@ -56,6 +63,49 @@ SELECTOR_PROPERTY_DEFINITION = {
         'required': True,
         'description': 'The per-atom selection'
     }
+}
+# molecular configuration data map and definition
+MOL_PROPERTY_MAP = {
+    'new_property_name': 'molecule-data',
+    'new_map': {
+        'mol-id': {
+            'field': MOL_ID_KEY,
+            'units': None,
+        },
+        'site-type': {
+            'field': SITE_TYPE_KEY,
+            'units': None,
+        },
+    }
+}
+MOL_PROPERTY_DEFINITION = {
+    'property-id': ('tag:staff@noreply.colabfit.org,2024-12-09:'
+                    'property/molecule-data'),
+    # kim properties don't support '_', use '-'
+    'property-name':
+    'molecule-data',
+    'property-title':
+    'Molecular Simulation Configuration Data',
+    'property-description': ('Information for defining simulation cells of '
+                             'molecular systems.'),
+    'mol-id': {
+        'type': 'int',
+        'has-unit': False,
+        'extent': [':'],
+        'required': True,
+        'description': 'ID of which molecule an atom belongs to',
+    },
+    'site-type': {
+        'type':
+        'int',
+        'has-unit':
+        False,
+        'extent': [':'],
+        'required':
+        True,
+        'description': ('ID of which atom (site) type in a LAMMPS FF/'
+                        'configuration file an atom is associated with'),
+    },
 }
 
 PLACEHOLDER_ARRAY_KEY = 'in_memory_array'  # used when writing args to tmp file
