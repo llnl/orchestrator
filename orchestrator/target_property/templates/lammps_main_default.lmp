@@ -1,0 +1,118 @@
+#-------------------------------------------------------------
+# INITIALIZE LAMMPS RUN
+#-------------------------------------------------------------
+
+# General Parameters
+units           {{ units }}
+boundary        p p p
+
+# Set Force Field Style / Atomic Style
+atom_style      {{ atom_style }}
+
+{% if ensemble_mode == 'forcefield' %}
+# Forcefield mode - full molecular setup
+bond_style      {{ bond_style }}
+angle_style     {{ angle_style }}
+dihedral_style  {{ dihedral_style }}
+improper_style  {{ improper_style }}
+pair_style      {{ pair_style }}
+
+# Get Datafile
+read_data       {{ data_file }}
+
+# FF Parameter File List
+include         {{ ff_param }}
+
+# Set pair coefficients
+pair_coeff      * * {{ pair_coeff }}
+
+# Pairwise Exclusions
+special_bonds   {{ special_bonds }}
+
+{% elif ensemble_mode == 'potential' %}
+# Potential mode - atomic system with potential file
+pair_style      {{ pair_style }}
+
+{% if data_file %}
+# Read structure from data file
+read_data       {{ data_file }}
+
+# Set atomic mass if provided
+{% if mass %}
+mass            1 {{ mass }}
+{% endif %}
+
+{% else %}
+# Create simulation box from scratch
+lattice         {{ lattice }} {{ lattice_param }}
+region          box block 0 {{ l_x }} 0 {{ l_y }} 0 {{ l_z }}
+create_box      1 box
+create_atoms    1 box
+
+# Set atomic mass
+mass            1 {{ mass }}
+{% endif %}
+
+# Set pair potential
+pair_coeff      * * FORCEFIELD_DIR/{{ potential }} {{ element }}
+
+{% else %}
+# Error: ensemble_mode must be 'forcefield' or 'potential'
+{% endif %}
+
+# Neighbor List Parameters
+neighbor        2.0 bin
+neigh_modify    delay 0 every 1 check yes
+
+#-------------------------------------------------------------
+# SIMULATION COMMANDS
+#-------------------------------------------------------------
+
+#-------------------------------------------------------------
+# COMPUTE SETUP
+#-------------------------------------------------------------
+
+compute         stress  all  stress/atom NULL
+{% if ensemble_mode == 'forcefield' %}
+compute         PEmol   all  pe/atom bond angle dihedral improper
+{% endif %}
+compute         PEpair  all  pe/atom pair
+
+#-------------------------------------------------------------
+# DUMP SETUP
+#-------------------------------------------------------------
+
+thermo_style    custom step time etotal pe ke temp press pxx pyy pzz pxy pxz pyz lx ly lz xy xz yz vol density
+thermo          10
+
+dump            trajectory  all custom 1000 dump.*.lammpstrj id mol type xu yu zu vx vy vz c_stress[1] c_stress[2] c_stress[3] c_stress[4] c_stress[5] c_stress[6] {% if ensemble_mode == 'forcefield' %}c_PEmol {% endif %}c_PEpair
+dump_modify     trajectory  first yes sort id format line "%8d %6d %4d %25.12e %25.12e %25.12e %25.12e %25.12e %25.12e %25.12e %25.12e %25.12e %25.12e %25.12e %25.12e {% if ensemble_mode == 'forcefield' %}%25.12e {% endif %}%25.12e"
+
+#-------------------------------------------------------------
+# SIMULATION SETUP
+#-------------------------------------------------------------
+
+run_style       verlet
+
+timestep        {{ timestep }}
+
+variable        myTemp  equal {{ temperature }}
+{% if ensemble == 'npt' %}
+variable        myPress equal {{ pressure }}
+{% endif %}
+
+# Initialize velocities
+velocity        all create ${myTemp} {{ seed }} mom yes dist gaussian
+
+# Ensemble-specific fix
+{% if ensemble == 'npt' %}
+fix             1 all npt temp ${myTemp} ${myTemp} 100.0 iso ${myPress} ${myPress} 1000.0
+{% elif ensemble == 'nvt' %}
+fix             1 all nvt temp ${myTemp} ${myTemp} 100.0
+{% else %}
+# Error: ensemble must be 'npt' or 'nvt'
+{% endif %}
+
+run             {{ run_steps }}
+
+unfix           1

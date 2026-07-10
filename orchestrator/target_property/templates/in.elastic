@@ -43,19 +43,19 @@
 #  init.mod.
 
 # initialize KIM potential
-kim init <POTENTIAL> metal
+kim init {{ potential }} metal
 
 # Define the finite deformation size. Try several values of this
 # variable to verify that results do not depend on it.
-variable up equal <DEFORMATION_MAG>
+variable up equal {{ deformation_mag }}
 
 # Define the amount of random jiggle for atoms
 # This prevents atoms from staying on saddle points
 variable atomjiggle equal 1.0e-5
 
 units metal
-variable cfac equal <UNITS_CFAC>
-variable cunits string <UNITS_STRING>
+variable cfac equal {{ units_cfac }}
+variable cunits string {{ units_string }}
 
 # metal units, elastic constants in eV/A^3
 #units          metal
@@ -80,11 +80,11 @@ variable maxeval equal 1000
 variable dmax equal 1.0e-2
 
 # generate the box and atom positions using a bcc lattice
-variable a equal <LATTICE_PARAM>
+variable a equal {{ lattice_param }}
 
 boundary        p p p
 
-lattice         <LATTICE_TYPE> $a
+lattice         {{ lattice_type }} $a
 region          box prism 0 3.0 0 3.0 0 3.0 0.0 0.0 0.0
 create_box      1 box
 create_atoms    1 box
