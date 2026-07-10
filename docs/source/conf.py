@@ -18,11 +18,11 @@ sys.path.append(os.path.abspath('../../'))
 # -- Project information -----------------------------------------------------
 
 project = 'Orchestrator'
-copyright = '2025, Lawrence Livermore National Laboratory'
+copyright = '2026, Lawrence Livermore National Laboratory'
 author = 'IAP UQ Thrust 4 Team'
 
 # The full version, including alpha/beta/rc tags
-release = '0.6'
+release = '0.7'
 
 # -- General configuration ---------------------------------------------------
 

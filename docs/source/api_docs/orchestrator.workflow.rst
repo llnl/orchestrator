@@ -43,10 +43,10 @@ LSF (bsub)
    :undoc-members:
    :show-inheritance:
 
-Slurm to LSF (bsub)
-^^^^^^^^^^^^^^^^^^^
+Flux (flux batch)
+^^^^^^^^^^^^^^^^^
 
-.. autoclass:: orchestrator.workflow.slurm_to_lsf.SlurmtoLSFWF
+.. autoclass:: orchestrator.workflow.flux.FluxWF
    :members:
    :undoc-members:
    :show-inheritance:

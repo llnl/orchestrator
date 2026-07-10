@@ -104,9 +104,7 @@ The following key dependencies are required for Orchestrator:
 +-------------------+---------------------------------------------------------+
 | KliFF             | https://github.com/openkim/kliff                        |
 +-------------------+---------------------------------------------------------+
-| colabfit-tools    | https://pypi.org/project/colabfit-kit/                  |
-+-------------------+---------------------------------------------------------+
-| colabfit-cli      | https://lc.llnl.gov/gitlab/iap-uq/cfkit-cli             |
+| colabfit-kit      | https://pypi.org/project/colabfit-kit/                  |
 +-------------------+---------------------------------------------------------+
 | kimkit            | https://pypi.org/project/kimkit/                        |
 +-------------------+---------------------------------------------------------+

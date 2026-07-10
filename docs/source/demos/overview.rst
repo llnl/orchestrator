@@ -71,3 +71,12 @@ Refit an Empirical Potential
 Starting from an existing empirical potential, this example guides you through evaluating and inspecting its parameters. You will then set up a :class:`~.ParametricModelTrainer` to retrain the model, and finally re-evaluate and save the updated potential, completing the refitting workflow.
 
 :download:`Download Notebook <../../../examples/tersoff_colabfit_fitting_example.ipynb>`
+
+.. _dimer_demo:
+
+Generate Dimer Configurations for PES Evaluation
+------------------------------------------------
+
+This example demonstrates the usage of :meth:`~.generate_dimer_configs` to generate a set of dimers for molecular systems, followed by :meth:`~.evaluate_dimer_configs_simulator`, which is used to evaluate the PES of these structures. The example constructs a PES map of a water and ethyl acetate dimer.
+
+:download:`Download Notebook <../../../examples/dimer_demo.ipynb>`

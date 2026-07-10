@@ -32,6 +32,14 @@ Data Keys
    :undoc-members:
    :show-inheritance:
 
+Structure Manipulation and Analysis
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. automodule:: orchestrator.utils.structure_analysis_and_manipulation_tools
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Data Inspection
 ^^^^^^^^^^^^^^^
 

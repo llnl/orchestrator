@@ -234,6 +234,23 @@ above, with indentation and comments added for clarity::
         ]
     ]
 
+.. _calculate_lammps_thermo:
+
+CalculateLammpsThermo
+^^^^^^^^^^^^^^^^^^^^^
+
+This class calculates various properties such as density, stress, temperature as a function of time
+through thermo function in LAMMPS simulations, extract the user defined properties from the log file
+and generate a plot for each property. The thermo properties of interest need to be defined via
+thermo_style in the LAMMPS template input files (either lammps_main_npt.lmp or lammps_main_nvt.lmp depending
+on the required ensemble to investigate a property). The ``lammps_resources`` folder with all the required
+force_field and initial input structure files should be placed in a user-defined location
+(such as ``test/target_property/templates``) and this location needs to be defined in the ``json`` file.
+Forcefield and initial structure file names need to be defined in the ``json`` file too. The user can select
+the properties to calculate/plot using ``property_selections`` in the ``json`` file. The corresponding property
+units can be also defined using ``property_units`` (to be used in the plots, can be left blank if they are not needed).
+
+
 Inheritance Graph
 -----------------
 

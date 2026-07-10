@@ -215,7 +215,8 @@ Inspecting the Database
 To view a summary and overview of the contents of a database, use the provided
 :meth:`~orchestrator.storage.colabfit.ColabfitStorage.list_data()` function.
 Note that for ColabfitStorage modules, this functionality is tied to the
-instance of the Colabfit database.
+instance of the Colabfit database and that a list of matching dictionaries may
+be provided by setting `capture_output = True`.
 
 Parsing for Storage
 -------------------

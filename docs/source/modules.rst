@@ -93,8 +93,8 @@ Orchestrator Inheritance Graph
    orchestrator.utils.templates
    orchestrator.workflow.aiida
    orchestrator.workflow.factory
+   orchestrator.workflow.flux
    orchestrator.workflow.local
    orchestrator.workflow.lsf
    orchestrator.workflow.slurm
-   orchestrator.workflow.slurm_to_lsf
    :parts: 3

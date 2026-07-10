@@ -21,7 +21,7 @@ Orchestrator uses ASE Atoms objects as its internal configuration data structure
 New structure IO
 ----------------
 
-While Orchestrator will generally handle parsing of its own data, there are instances (typically around new data ingestion) where external data needs to be used. For converting xyz files into the internal Atoms representation, the method :meth:`orchestrator.utils.input_output.ase_glob_read` is available. Note that this method will not set keys according to the data standard (discussed above) since the xyz file format does not enforce any naming conventions. Thus for users adding data for storage, you will need to manually the keys as appropriate prior to storage with i.e. :meth:`~orchestrator.storage.storage_base.Storage.new_dataset`. A basic example is shown below where the xyz file stores forces as 'force' and energies as 'Energy':
+While Orchestrator will generally handle parsing of its own data, there are instances (typically around new data ingestion) where external data needs to be used. For converting xyz files into the internal Atoms representation, the method :meth:`~orchestrator.utils.input_output.ase_glob_read` is available. Note that this method will not set keys according to the data standard (discussed above) since the xyz file format does not enforce any naming conventions. Thus for users adding data for storage, you will need to manually the keys as appropriate prior to storage with i.e. :meth:`~orchestrator.storage.storage_base.Storage.new_dataset`. A basic example is shown below where the xyz file stores forces as 'force' and energies as 'Energy':
 
 .. code-block:: python
 
@@ -35,3 +35,78 @@ While Orchestrator will generally handle parsing of its own data, there are inst
         # optionally delete the previous named entries
         del config.arrays['force']
         del config.info['Energy']
+
+Structure Analysis and Manipulation
+-----------------------------------
+
+This utility module contains a mixture of functionality that is primarily used by the :class:`~.Augmentor` but may be more broadly useful as well as methods for analyzing and visualizing structural information. These tools can help users better understand underlying structural data in datasets for training IAPs.
+
+The main analysis method is:
+
+* :meth:`~orchestrator.utils.structure_analysis_and_manipulation_tools.analyze_structures`, which can operate on either a single structure or a set of structures
+
+The outputs of these analysis methods can be used on their own, or passed to the plotting functions:
+
+* :meth:`~orchestrator.utils.structure_analysis_and_manipulation_tools.plot_structure_analysis_results`, which shows composite information from one or more structures
+* :meth:`~orchestrator.utils.structure_analysis_and_manipulation_tools.plot_structure_analysis_comparisons`, which compares structural information across different configurations in a provided set.
+
+.. _struct_analysis_example:
+
+Structure Analysis and Plotting Example Usage
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: python
+
+    from orchestrator.utils.structure_analysis_and_manipulation_tools import (
+        analyze_structures,
+        plot_structure_analysis_results,
+        plot_structure_analysis_comparisons
+    )
+    from orchestrator.augmentor import Augmentor
+    import numpy as np
+    from ase.build import bulk
+
+    augmentor = Augmentor()
+
+    element = 'C'
+    lat_type = 'diamond'
+    supercell_num = 3
+    lat = 3.57
+    num_structs = 5
+    compression_range = (.8, .95)
+    # use the augmentor's generate_shaken_boxes method to make structures
+    shaken_configs = augmentor.generate_shaken_boxes(
+        element,
+        lat_type,
+        lat,
+        compression_range,
+        supercell_num,
+        num_structs,
+        temperature=6000,
+        debeye_temp=800,
+        mass_weighted=True,
+        seed=42,
+        cubic=True,
+    )
+    shaken_labels = [
+        f'{x*100:.3f}% compress ' for x in np.linspace(
+            compression_range[0], compression_range[1], num_structs)
+    ]
+
+    # also generate a pristine lattice to compare to
+    pristine = bulk(element, lat_type, a=lat,
+                    cubic=True) * (supercell_num, supercell_num, supercell_num)
+    pristine_label = 'pristine'
+
+    # do analysis on structures (NN distances, RDF)
+    # Use the unified analyze_structures function for both single and multiple structures
+    combined_shaken, shaken_individual = analyze_structures(
+        shaken_configs,
+        labels=shaken_labels,
+    )
+    pristine_results = analyze_structures(pristine, label=pristine_label)
+
+    # plot the outputs
+    plot_structure_analysis_results(combined_shaken, '.')
+    all_individual_results = shaken_individual + [pristine_results]
+    plot_structure_analysis_comparisons(all_individual_results, '.')
