@@ -25,6 +25,7 @@ class LocalWF(Workflow):
         :type kwargs:
         """
         self.current_job_id = 0
+        self.ID_TYPE = int  # LocalWF uses integer job IDs
         super().__init__(**kwargs)
 
     def checkpoint_workflow(self):
@@ -68,7 +69,7 @@ class LocalWF(Workflow):
         Implementation is just to pass since submit_job won't return until the
         job is completed.
 
-        :param calc_ids: list of slurm IDs of the jobs to check for
+        :param calc_ids: list of IDs of the jobs to check for
             completion. Can also pass a single ID.
         :type calc_ids: int or list
         """
@@ -136,7 +137,7 @@ class LocalWF(Workflow):
                     job_can_run = False
                     exit_code = 'dependency not satisfied'
                     self.logger.info((f'[{depend_id}]: state = '
-                                      f'{job_status.completed}, exit_code = '
+                                      f'{job_status.state}, exit_code = '
                                       f'{job_status.exit_code}'))
                     break
         if command is None or command == '':
@@ -160,9 +161,19 @@ class LocalWF(Workflow):
             exit_code = system(
                 f'(cd {run_path}; {command} 2>> local_wf_stdout.log)')
             self.logger.info(f'Job {calc_id} execution completed')
+            state = 'done'
+        else:
+            state = 'done_cancelled'
 
-        job_status = JobStatus(run_path, 'done', exit_code)
-        job_status.metadata = extra_args.get(METADATA_KEY, {})
+        metadata = extra_args.get(METADATA_KEY, {})
+        job_status = JobStatus(
+            run_path,
+            state,
+            exit_code,
+            command=command,
+            job_details=job_details,
+            metadata=metadata,
+        )
         self.jobs[calc_id] = job_status
         self.save_job_dict()
         self.checkpoint_workflow()

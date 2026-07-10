@@ -1,14 +1,8 @@
 from abc import ABC
-from os import path, PathLike
+from os import path, PathLike, getcwd
 import subprocess as sp
 from typing import Optional, Union
-from .workflow_base import HPCWorkflow, JobStatus
-from ..utils.exceptions import (
-    ProblematicJobStateError,
-    JobSubmissionError,
-    UnfullfillableDependenciesError,
-)
-from ..utils.data_standard import METADATA_KEY
+from .workflow_base import HPCWorkflow
 
 
 class SlurmWF(HPCWorkflow, ABC):
@@ -32,8 +26,8 @@ class SlurmWF(HPCWorkflow, ABC):
         :type default_template: str
         :param kwargs: remaining parameters passed to parent for init. Keys
             include: queue, account, walltime, nodes, tasks, tasks_per_node,
-            wait_freq, root_directory, checkpoint_file, checkpoint_name, and
-            job_record_file
+            wait_freq, remote_machine, root_directory, checkpoint_file,
+            checkpoint_name, and job_record_file
         :type kwargs: dict
         """
         super().__init__(**kwargs)
@@ -45,56 +39,30 @@ class SlurmWF(HPCWorkflow, ABC):
             self.default_template = default_template
         # determines print format of walltime strings
         self.USE_SEC = True
+        self.ID_TYPE = int
         self.run_string = 'srun'
 
-    def extract_slurm_id(self, str_output: str) -> int:
+    def _parse_job_id(self, str_output: str) -> int:
         """
-        From the command line output, extract the slurm job id
+        Parse Slurm-specific output to extract job ID.
 
-        :param str_output: full output string to extract ID from
+        :param str_output: Output string from sbatch or srun
         :type str_output: str
-        :returns: slurm ID
+        :returns: Slurm job ID
         :rtype: int
+        :raises ValueError: If job ID format is invalid
         """
-        successful_extraction = False
-        try:
-            split_output = str_output.split()
-            # check if expected output format is present
-
-            if split_output[0] == 'Submitted' and split_output[2] == 'job':
-                # output from sbatch
-                calc_id = int(split_output[3])
-                self.logger.info(f'Found slurm ID: {calc_id}')
-                successful_extraction = True
-            elif split_output[0] == 'srun:' and split_output[1] == 'job':
-                # output from srun
-                calc_id = int(split_output[2])
-                self.logger.info(f'Found slurm ID: {calc_id}')
-                successful_extraction = True
-            else:
-                self.logger.info((f'Output string is unexpected format:\n'
-                                  f'\t{str_output.strip()}'))
-                self.logger.info(f'Setting ID to: {self.unknown_job_id}')
-                calc_id = self.unknown_job_id
-                self.unknown_job_id += 1
-                self.new_unknown_id = True
-        except AttributeError:
-            self.logger.info((f'Passed output not a splitable string, setting '
-                              f'ID to {self.unknown_job_id}'))
-            calc_id = self.unknown_job_id
-            self.unknown_job_id += 1
-            self.new_unknown_id = True
-        except IndexError:
-            self.logger.info((f'Passed output likely an empty string, setting '
-                              f'ID to {self.unknown_job_id}'))
-            calc_id = self.unknown_job_id
-            self.unknown_job_id += 1
-            self.new_unknown_id = True
-        if not successful_extraction:
-            raise JobSubmissionError(('could not obtain slurm ID from job '
-                                      'submission - cannot continue at this '
-                                      'time'))
-        return calc_id
+        split_output = str_output.split()
+        # check if expected output format is present
+        if split_output[0] == 'Submitted' and split_output[2] == 'job':
+            # output from sbatch: "Submitted batch job 12345"
+            return int(split_output[3])
+        elif split_output[0] == 'srun:' and split_output[1] == 'job':
+            # output from srun: "srun: job 12345 ..."
+            return int(split_output[2])
+        else:
+            raise ValueError(
+                f'Output string is unexpected format: {str_output.strip()}')
 
     def generate_job_preamble(
         self,
@@ -114,13 +82,10 @@ class SlurmWF(HPCWorkflow, ABC):
         """
         node_val = job_details.get('nodes', self.default_nodes)
         task_val = job_details.get('tasks', self.default_tasks)
-        custom_preamble = job_details.get('custom_preamble', None)
         tasks_per_node_val = job_details.get('tasks_per_node',
                                              self.default_tasks_per_node)
 
-        if custom_preamble is not None:
-            job_arg_string = custom_preamble
-        elif task_val > 1:
+        if task_val > 1:
             if tasks_per_node_val > 1:
                 self.logger.info((f'Warning: tasks and tasks-per-node are '
                                   f'both specified. Using tasks = {task_val}'))
@@ -142,7 +107,13 @@ class SlurmWF(HPCWorkflow, ABC):
         :returns: job status
         :rtype: str
         """
-        control_output = sp.run(f'scontrol show job {slurm_id}',
+        if self.remote_machine is None:
+            control_command = f'scontrol show job {slurm_id}'
+        else:
+            control_command = (f"ssh {self.remote_machine} 'source /etc/"
+                               f"profile; scontrol show job {slurm_id}'")
+
+        control_output = sp.run(control_command,
                                 capture_output=True,
                                 shell=True,
                                 encoding='UTF-8')
@@ -167,227 +138,165 @@ class SlurmWF(HPCWorkflow, ABC):
                 state = 'done_other'
         return state
 
-    def update_job_status(self, slurm_ids: list[int]) -> list[str]:
+    def _build_status_query_command(self, job_ids: list[int]) -> str:
         """
-        Query the scheduler and extract the job_status
+        Build Slurm-specific status query command.
 
-        This helper function uses squeue to check the slurm queue and extracts
-        updates about a job's progress, modifying the corresponding job_status
-        object. Status options are: 'done', 'pending', 'running', 'dependency',
-        and 'completing'. The current status is returned for convenience.
-
-        :param slurm_ids: list of slurm IDs of the jobs to check for completion
-        :type slurm_ids: list
-        :returns: list of job states
-        :rtype: list (of str)
+        :param job_ids: List of Slurm job IDs to query
+        :type job_ids: list[int]
+        :returns: Command string to query job statuses
+        :rtype: str
         """
-        status_changed = False
-        job_str = f'{slurm_ids[0]}'
-        if len(slurm_ids) > 1:
-            for remaining_ids in slurm_ids[1:]:
-                job_str += f',{remaining_ids}'
-        queue_output = sp.run(f'squeue -j {job_str} -o "%i %t %R"',
-                              capture_output=True,
-                              shell=True,
-                              encoding='UTF-8')
-        updated_states = []
-        if queue_output.returncode != 0 or queue_output.stderr:
-            self.logger.info((f'Problem checking for jobs {slurm_ids}, '
-                              f'exit code: {queue_output.returncode} '
-                              f'stderr: {queue_output.stderr.strip()}'))
-            # possible that the job is just not in database anymore
-            if queue_output.stderr[23:37] == 'Invalid job id':
-                for slurm_id in slurm_ids:
-                    known_status = self.get_job_status(slurm_id)
-                    if self.job_done_file_present(slurm_id):
-                        new_state = 'done'
-                        self.logger.info((f'Updating job {slurm_id} state '
-                                          f'from {known_status.state} to '
-                                          f'{new_state} based on job_done '
-                                          'file'))
-                        known_status.state = new_state
-                    else:
-                        new_state = 'error'
-                        raise ProblematicJobStateError(
-                            ('Orchestrator does not currently have set '
-                             f'behavior for "{new_state}" job state. Check '
-                             'your queue for any remaining pending jobs.'))
-                    updated_states.append(known_status.state)
+        job_str = f'{job_ids[0]}'
+        if len(job_ids) > 1:
+            for remaining_id in job_ids[1:]:
+                job_str += f',{remaining_id}'
+
+        if self.remote_machine is None:
+            return f'squeue -j {job_str} -o "%i %t %R"'
         else:
-            split_output = queue_output.stdout.split()
-            for slurm_id in slurm_ids:
-                known_status = self.get_job_status(slurm_id)
-                try:
-                    slurm_str_index = split_output.index(str(slurm_id))
-                    slurm_state = split_output[slurm_str_index + 1]
-                    if slurm_state == 'CG':
-                        new_state = 'completing'
-                    elif slurm_state == 'R':
-                        new_state = 'running'
-                    elif slurm_state == 'PD':
-                        reason = split_output[slurm_str_index + 2][1:-1]
-                        if reason == 'Dependency':
-                            new_state = 'dependency'
-                        else:
-                            new_state = 'pending'
-                    else:
-                        new_state = 'unknown'
-                except ValueError:
-                    # slurm id not in list, so query job status with scontrol
-                    if known_status.state[:4] != 'done':
-                        # completed job state has not been assigned
-                        new_state = self.check_completed_job_status(slurm_id)
-                    else:
-                        # scontrol already called, no changes
-                        new_state = known_status.state
-                except Exception:
+            return (f"ssh {self.remote_machine} 'source /etc/profile;"
+                    f' squeue -j {job_str} -o "%i %t %R"\'')
+
+    def _parse_job_state(self, job_id: int, split_output: list) -> str:
+        """
+        Parse Slurm-specific state from query output.
+
+        :param job_id: Slurm job ID to parse state for
+        :type job_id: int
+        :param split_output: Split output from squeue command
+        :type split_output: list[str]
+        :returns: Parsed job state
+        :rtype: str
+        """
+        try:
+            slurm_str_index = split_output.index(str(job_id))
+            slurm_state = split_output[slurm_str_index + 1]
+            if slurm_state == 'CG':
+                return 'completing'
+            elif slurm_state == 'R':
+                return 'running'
+            elif slurm_state == 'PD':
+                reason = split_output[slurm_str_index + 2][1:-1]
+                if reason == 'Dependency':
+                    return 'dependency'
+                else:
+                    return 'pending'
+            else:
+                return 'unknown'
+        except ValueError:
+            # slurm id not in list, so query job status with scontrol
+            known_status = self.get_job_status(job_id)
+            if known_status.state[:4] != 'done':
+                # completed job state has not been assigned
+                return self.check_completed_job_status(job_id)
+            else:
+                # scontrol already called, no changes
+                return known_status.state
+        except Exception:
+            self.logger.info((f'Job {job_id} state parsing had an '
+                              f' unknown error, set state to "error"'))
+            return 'error'
+
+    def _handle_query_error(
+        self,
+        job_ids: list[int],
+        query_output: sp.CompletedProcess,
+    ) -> list[str]:
+        """
+        Handle Slurm-specific query errors.
+
+        Slurm removes jobs from the queue after they complete, so we need
+        special handling to check for job_done files.
+
+        :param job_ids: List of Slurm job IDs that were queried
+        :type job_ids: list[int]
+        :param query_output: Output from failed query command
+        :type query_output: subprocess.CompletedProcess
+        :returns: List of job states
+        :rtype: list[str]
+        """
+        updated_states = []
+        # possible that the job is just not in database anymore
+        if query_output.stderr and 'Invalid job id' in query_output.stderr:
+            status_changed = False
+            problematic_jobs = []
+            for job_id in job_ids:
+                known_status = self.get_job_status(job_id)
+                if self.job_done_file_present(job_id):
+                    new_state = 'done'
+                    self.logger.info((f'Updating job {job_id} state '
+                                      f'from {known_status.state} to '
+                                      f'{new_state} based on job_done file'))
+                    known_status.state = new_state
+                    status_changed = True
+                else:
                     new_state = 'error'
-                    self.logger.info((f'Job {slurm_id} state parsing had an '
-                                      f' unknown error, set state to "error"'))
-                if new_state != known_status.state:
-                    self.logger.info((f'Updating job {slurm_id} state '
+                    self.logger.info((f'Updating job {job_id} state '
                                       f'from {known_status.state} to '
                                       f'{new_state}'))
                     known_status.state = new_state
                     status_changed = True
-
-                if new_state in self.problematic_states:
-                    raise ProblematicJobStateError(
-                        (f'Orchestrator does not currently have set behavior '
-                         f'for "{new_state}" job state. Check your queue for '
-                         f'any remaining pending jobs.'))
-
+                    # collect for after all updates
+                    problematic_jobs.append((job_id, new_state))
                 updated_states.append(known_status.state)
 
             if status_changed:
-                # we only update the job dict if any statuses have changed
                 self.checkpoint_workflow()
-
         return updated_states
 
-    def submit_job(
+    def _log_default_job_details(self):
+        """Log default Slurm job details when none are provided."""
+        self.logger.info((f'No job details specified, will use defaults:\n'
+                          f'  N = {self.default_nodes}, A = '
+                          f'{self.default_account}, t = '
+                          f'{self.default_walltime}, p = '
+                          f'{self.default_queue}'))
+
+    def _build_dependency_string(
         self,
-        command: str,
+        dependencies: list,
+        extra_args: dict,
+    ) -> str:
+        """
+        Build Slurm-specific dependency string.
+
+        :param dependencies: List of Slurm job IDs that this job depends on
+        :type dependencies: list[int]
+        :param extra_args: Extra arguments, may contain 'after' key
+        :type extra_args: dict
+        :returns: Dependency string for sbatch command
+        :rtype: str
+        """
+        after_type = extra_args.get('after', 'afterany')
+        # format the list to remove [] and spaces between commas
+        no_space_list = ''.join(str(dependencies)[1:-1].split())
+        # swap commas for : to separate job ids
+        no_space_list = no_space_list.replace(',', ':')
+        return f'-d {after_type}:{no_space_list}'
+
+    def _build_submit_command(
+        self,
         run_path: Union[str, PathLike],
-        job_details: Optional[dict[str, Union[float, str]]] = None,
-    ) -> int:
+        batch_file: str,
+        depend_str: str,
+    ) -> str:
         """
-        Submits a job for running using a submission script and sbatch.
+        Build Slurm-specific submit command.
 
-        submit_job handles job submission for the modules and is the main
-        interface for the workflows to be used. For the :class:`SlurmWF`
-        implementation, fully articulated batch scripts are generated each job
-        and submitted to the slurm scheduler via sbatch. Method inputs define
-        the ``command`` to be executed for the job, location for the run, and
-        details about the job's resources (``job_details``). ``job_details``
-        inlcudes ``dependencies`` of the job in the form of a list of job_ids,
-        if the job is blocking (``synchronus``) or not, and an extra dictionary
-        , ``extra_args``, to add flexibility for parameterizing the job (such
-        as pre- or postambles to include in the batch file). ``dependencies``
-        are a list of job IDs which must have a successfully completed
-        :class:`~JobStatus` for the present job to run. However, jobs can still
-        be submitted to the queue with outstanding dependencies if run
-        asynchronously. The ``after`` key in ``extra_args`` can be specified to
-        define the slurm dependency behavior (i.e. 'afterany' or 'afterok').
-        Note that while default job resources (nodes, account, walltime, etc.)
-        are present, they can be overridden by providing these keywords in the
-        ``job_details`` dict for any specific calculation. Creates the
-        :class:`~.workflow_base.JobStatus` for this job, where the job state is
-        initially 'submitted' and can be updated to 'pending', 'dependency',
-        'running', 'completing', 'done', or 'unknown'. The 'done' state means
-        the calculation has completed, but can be decorated with suffixes that
-        add more information if the job didn't successfully complete (i.e.
-        'done_timeout'). Status checks are preformed by
-        :meth:`~update_job_status`. Returns the slurm ID, which can be used to
-        retrieve the present job's :class:`~.workflow_base.JobStatus`. If the
-        slurm ID cannot be identified, an internal tracking number
-        (starting at 1000) is used instead.
-
-        :param command: command that defines the job to be executed
-        :type command: str
-        :param run_path: directory for the job to be executed in
-        :type run_path: str
-        :param job_details: specifics for running the job, such as
-            number of nodes, queue, etc., as well as optional dependency list,
-            if the job should be synchronous or asychronous, and any other
-            optional arguments, such as pre- or postambles |default| ``None``
-        :type job_details: dict
-        :returns: return job ID to query this job status and location
-        :rtype: int
+        :param run_path: Directory where the job will be executed
+        :type run_path: str or PathLike
+        :param batch_file: Name of the batch file to submit
+        :type batch_file: str
+        :param depend_str: Dependency string (may be empty)
+        :type depend_str: str
+        :returns: Complete submission command
+        :rtype: str
         """
-        # check inputs and provide information to user
-
-        if job_details is None:
-            job_details = {}
-            self.logger.info((f'No job details specified, will use defaults:\n'
-                              f'  N = {self.default_nodes}, A = '
-                              f'{self.default_account}, t = '
-                              f'{self.default_walltime}, p = '
-                              f'{self.default_queue}'))
-
-        synchronous = job_details.get('synchronous', False)
-        dependencies = job_details.get('dependencies', [])
-        extra_args = job_details.get('extra_args', {})
-
-        job_can_run = True
-        calc_id = -1
-        exit_code = 'undefined error'
-
-        if command is None or command == '':
-            job_can_run = False
-            exit_code = 'empty command'
-            self.logger.info('Job will not run: no command')
-
-        if job_can_run:
-            # generate the batch script
-            batch_file = self.generate_batch_file(
-                command,
-                run_path,
-                job_details,
-                extra_args,
-            )
-            # submit the batch script, with dependencies
-            if dependencies:
-                self.logger.info(
-                    f'Including dependencies: {str(dependencies)[1:-1]}')
-                after_type = extra_args.get('after', 'afterany')
-                # format the list to remove [] and spaces between commas
-                no_space_list = ''.join(str(dependencies)[1:-1].split())
-                # swap commas for : to separate job ids
-                no_space_list = no_space_list.replace(',', ':')
-                depend_str = f'-d {after_type}:{no_space_list}'
-            else:
-                depend_str = ''
-
-            self.logger.info('Spawning job, ID to be defined')
-            submit_command = (
-                f'cd {run_path}; sbatch {depend_str} {batch_file}')
-            process_output = sp.run(submit_command,
-                                    capture_output=True,
-                                    shell=True,
-                                    encoding='UTF-8')
-            exit_code = process_output.returncode
-            # get the slurm ID
-            if exit_code != 0:
-                self.logger.info((f'Something wrong with submission [exit '
-                                  f'code = {exit_code}]'))
-                calc_id = self.extract_slurm_id(process_output.stderr)
-            else:
-                calc_id = self.extract_slurm_id(process_output.stdout)
-            # create job_status and add to self.jobs
-            job_status = JobStatus(run_path, 'submitted', exit_code)
-            # if synch, wait and check for completion
-            if synchronous:
-                self.block_until_completed(calc_id)
+        if self.remote_machine is None:
+            return f'cd {run_path}; sbatch {depend_str} {batch_file}'
         else:
-            calc_id = self.unknown_job_id
-            self.unknown_job_id += 1
-            self.new_unknown_id = True
-            job_status = JobStatus(run_path, 'done_cancelled', exit_code)
-            if dependencies:
-                raise UnfullfillableDependenciesError()
-
-        job_status.metadata = extra_args.get(METADATA_KEY, {})
-        self.jobs[calc_id] = job_status
-        self.checkpoint_workflow()
-        return calc_id
+            cwd = getcwd()
+            return (f'ssh {self.remote_machine} "source /etc/profile; '
+                    f'cd {cwd}/{run_path}; '
+                    f'sbatch {depend_str} {batch_file}"')

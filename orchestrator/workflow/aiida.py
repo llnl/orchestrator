@@ -40,6 +40,7 @@ class AiidaWF(HPCWorkflow, ABC):
         """
         super().__init__(**kwargs)
         self.check_daemon_status()
+        self.ID_TYPE = int
 
     def check_daemon_status(self):
         """
@@ -280,8 +281,17 @@ class AiidaWF(HPCWorkflow, ABC):
         pk = calc.pk
         self.logger.info(f'Spawning AiiDA job with PK=<{pk}>')
 
-        job_status = JobStatus(f'{self.root_directory}/{pk}', 'created', 0)
-        job_status.metadata = extra_args.get(METADATA_KEY, {})
+        # Convert builder to string representation for storage
+        command_str = str(builder) if builder else None
+        metadata = extra_args.get(METADATA_KEY, {})
+        job_status = JobStatus(
+            f'{self.root_directory}/{pk}',
+            'created',
+            0,
+            command=command_str,
+            job_details=job_details,
+            metadata=metadata,
+        )
         self.jobs[pk] = job_status
 
         self.checkpoint_workflow()

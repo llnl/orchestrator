@@ -73,10 +73,10 @@ class WorkflowBuilder(ModuleBuilder):
                     workflow_factory.add_new_module('LSF', LSFWF)
                 except ModuleAlreadyInFactoryError:
                     pass
-            case 'SLURMTOLSF':
-                from .slurm_to_lsf import SlurmtoLSFWF
+            case 'FLUX':
+                from .flux import FluxWF
                 try:
-                    workflow_factory.add_new_module('SLURMTOLSF', SlurmtoLSFWF)
+                    workflow_factory.add_new_module('FLUX', FluxWF)
                 except ModuleAlreadyInFactoryError:
                     pass
             case 'AiiDA':
