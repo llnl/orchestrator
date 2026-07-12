@@ -4,7 +4,7 @@ from datetime import datetime
 from copy import deepcopy
 from typing import Optional, Union
 import re
-from ..workflow import Workflow, workflow_builder
+from ..scheduler import Scheduler, scheduler_builder
 from ..storage import Storage
 from ..utils.recorder import Recorder
 from ..utils.exceptions import DatasetDoesNotExistError
@@ -24,7 +24,7 @@ class Oracle(Recorder, ABC):
 
     def __init__(self, **kwargs):
         """
-        set variables and initialize the recorder and default workflow
+        set variables and initialize the recorder and default scheduler
 
         :param kwargs: arguments for instantiating Oracle. These arguments
             are defined by the concrete classes, and include items such as the
@@ -34,12 +34,12 @@ class Oracle(Recorder, ABC):
         """
         super().__init__()
         self.remaining_args = kwargs
-        #: default workflow to use within the Oracle class
-        self.default_wf = workflow_builder.build(
+        #: default scheduler to use within the Oracle class
+        self.default_scheduler = scheduler_builder.build(
             'LOCAL',
             {
                 'root_directory': './oracle',
-                'checkpoint_name': 'default_oracle_workflow',
+                'checkpoint_name': 'default_oracle_scheduler',
                 'job_record_file': './default_oracle_job_record.pkl',
             },
         )
@@ -49,7 +49,7 @@ class Oracle(Recorder, ABC):
         path_type: str,
         input_args: dict[str, Union[int, float, str]],
         configs: list[Atoms],
-        workflow: Optional[Workflow] = None,
+        scheduler: Optional[Scheduler] = None,
         job_details: Optional[dict[str, Union[int, float, str]]] = None,
     ) -> list[int]:
         """
@@ -59,10 +59,10 @@ class Oracle(Recorder, ABC):
         taking atomic configurations as input and handling the submission of
         calculations to obtain the ground truth data. Configs is a dataset of 1
         or more structures. run() will create independent jobs for
-        each structure using the supplied workflow, with job_details
+        each structure using the supplied scheduler, with job_details
         parameterizing the job submission.
 
-        :param path_type: specifier for the workflow path, to differentiate
+        :param path_type: specifier for the scheduler path, to differentiate
             calculation types
         :type path_type: str
         :param input_args: input arguments to fill out the input file
@@ -70,16 +70,16 @@ class Oracle(Recorder, ABC):
         :param configs: list of configurations as ASE atoms to run ground truth
             calculations for
         :type configs: list
-        :param workflow: the workflow for managing job submission, if none are
-            supplied, will use the default workflow defined in this class
+        :param scheduler: the scheduler for managing job submission, if none
+            are supplied, will use the default scheduler defined in this class
             |default| ``None``
-        :type workflow: Workflow
+        :type scheduler: Scheduler
         :param job_details: dict that includes any additional parameters for
             running the job (passed to
-            :meth:`~orchestrator.workflow.workflow_base.Workflow.submit_job`)
+            :meth:`~.scheduler_base.Scheduler.submit_job`)
             |default| ``None``
         :type job_details: dict
-        :returns: a list of calculation IDs from the workflow.
+        :returns: a list of calculation IDs from the scheduler.
         :rtype: list
         """
         module_name = self.__class__.__name__
@@ -87,15 +87,15 @@ class Oracle(Recorder, ABC):
         num_calcs = len(configs)
         self.logger.info(f'Spinning up {num_calcs} {module_name} calculations')
 
-        if workflow is None:
-            workflow = self.default_wf
+        if scheduler is None:
+            scheduler = self.default_scheduler
         if job_details is None:
             job_details = {}
 
-        path_base = workflow.make_path_base(module_name, path_type)
+        path_base = scheduler.make_path_base(module_name, path_type)
         self.path_base = path_base
         for frame in range(0, num_calcs):
-            run_path = workflow.make_path(module_name, path_type)
+            run_path = scheduler.make_path(module_name, path_type)
             file_name = self.write_input(run_path, input_args, configs[frame])
             modified_job_details = deepcopy(job_details)
             modified_job_details['run_path'] = run_path
@@ -110,7 +110,7 @@ class Oracle(Recorder, ABC):
                         METADATA_KEY: configs[frame].info[METADATA_KEY]
                     }
             oracle_command = self.get_run_command(**modified_job_details)
-            calc_id = workflow.submit_job(
+            calc_id = scheduler.submit_job(
                 oracle_command,
                 run_path,
                 job_details=modified_job_details,
@@ -126,7 +126,7 @@ class Oracle(Recorder, ABC):
         storage: Storage,
         dataset_name: Optional[str] = None,
         dataset_handle: Optional[str] = None,
-        workflow: Optional[Workflow] = None,
+        scheduler: Optional[Scheduler] = None,
     ) -> str:
         """
         extract and save computed data to storage
@@ -141,7 +141,7 @@ class Oracle(Recorder, ABC):
 
         :param paths: calc_ids or explicit paths associated with each config.
             If calc_ids are supplied, the path is extracted from the
-            :class:`~orchestrator.workflow.workflow_base.JobStatus`. Calc IDs
+            :class:`~orchestrator.scheduler.scheduler_base.JobStatus`. Calc IDs
             are generally prefered as they can also carry metadata with them.
         :param storage: specific module that handles the staroge of data.
         :param dataset_name: The name of the datset in the Storage where the
@@ -153,21 +153,21 @@ class Oracle(Recorder, ABC):
             If provided, will add data to this dataset. If ``None`` and
             dataset_name is not provided the class default name (date stamped)
             is used. |default| ``None``
-        :param workflow: the workflow for managing job submission, if none are
-            supplied, will use the default workflow defined in this class.
-            Should be consistent with the workflow supplied for the run calls.
+        :param scheduler: the scheduler for managing job submission, if none
+            are supplied, will use the default scheduler defined in this class.
+            Should be consistent with the scheduler supplied for the run calls.
             |default| ``None``
         :returns: dataset handle
         """
-        if workflow is None:
-            workflow = self.default_wf
+        if scheduler is None:
+            scheduler = self.default_scheduler
 
         if not isinstance(paths, list):
             raise TypeError('paths should be a list, instead received '
                             f'{type(paths).__name__}')
 
-        # Use workflow method to resolve paths and metadata
-        data_paths, existing_metadata = workflow.resolve_calc_paths(
+        # Use scheduler method to resolve paths and metadata
+        data_paths, existing_metadata = scheduler.resolve_calc_paths(
             paths, allow_paths=True)
 
         self.logger.info((f'Labelling {len(data_paths)} '
@@ -225,7 +225,7 @@ class Oracle(Recorder, ABC):
     def data_from_calc_ids(
         self,
         calc_ids: list[int] = None,
-        workflow: Workflow = None,
+        scheduler: Scheduler = None,
     ) -> tuple[list[Atoms], dict]:
         """
         Given a list of calc_ids, will iterate over the list and make relevant
@@ -237,8 +237,8 @@ class Oracle(Recorder, ABC):
             input parameters of the code and the universal values.
         """
 
-        if workflow is None:
-            workflow = self.default_wf
+        if scheduler is None:
+            scheduler = self.default_scheduler
 
         configs = []
         code_parameters = {}
@@ -246,7 +246,7 @@ class Oracle(Recorder, ABC):
         for calc_id in calc_ids:
             try:
                 atoms = self.parse_for_storage(calc_id=calc_id,
-                                               workflow=workflow)
+                                               scheduler=scheduler)
 
                 metadata = atoms.info[METADATA_KEY]
                 parameters = metadata.pop('code_parameters', None)
@@ -342,7 +342,7 @@ class Oracle(Recorder, ABC):
         self,
         run_path: str = '',
         calc_id: Union[int, str] = None,
-        workflow: Workflow = None,
+        scheduler: Scheduler = None,
     ) -> Atoms:
         """
         process calculation output to extract data in a consistent format
@@ -354,10 +354,10 @@ class Oracle(Recorder, ABC):
         eV/A^3
 
         :param run_path: directory where the oracle output file resides.
-            If not provided, will be extracted from the workflow using calc_id.
-        :param calc_id: Calculation ID to look up via workflow.get_job_path().
-            Can be int or str depending on workflow implementation.
-        :param workflow: Workflow object of Orchestrator.
+            If not provided, will be extracted from the scheduler using calc_id
+        :param calc_id: Calculation ID to look up via scheduler.get_job_path().
+            Can be int or str depending on scheduler implementation.
+        :param scheduler: Scheduler object of Orchestrator.
         :returns: Atoms of the configurations with attached properties and
             metadata.
         """

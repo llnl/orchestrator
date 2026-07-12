@@ -5,7 +5,7 @@ from ase.calculators.kim.kim import KIM
 from typing import Union
 from .oracle_base import Oracle
 from ..utils.input_output import safe_read, safe_write, try_loading_ase_keys
-from ..workflow.workflow_base import Workflow
+from ..scheduler.scheduler_base import Scheduler
 from ..utils.data_standard import METADATA_KEY
 
 
@@ -20,7 +20,7 @@ class KIMOracle(Oracle):
 
     def __init__(self, potential: str, **kwargs):
         """
-        set variables and initialize the recorder and default workflow
+        set variables and initialize the recorder and default scheduler
 
         :param potential: string of the KIM potential installed in the KIM API
         :type potential: str
@@ -76,7 +76,7 @@ class KIMOracle(Oracle):
         """
         assign the KIM calculator to the ``Atoms`` attribute
 
-        this method bypasses the actual submission of a job to any workflow,
+        this method bypasses the actual submission of a job to any scheduler,
         instead using the internal python environment/KIM to calculate ground
         truth values. Calculation outputs are saved in the ``run_path``
         specified in the ``args`` dict.
@@ -104,7 +104,7 @@ class KIMOracle(Oracle):
         self,
         run_path: str = '',
         calc_id: Union[int, str] = None,
-        workflow: Workflow = None,
+        scheduler: Scheduler = None,
     ) -> Atoms:
         """
         process calculation output to extract data in the format for Storage
@@ -115,17 +115,17 @@ class KIMOracle(Oracle):
         in eV, forces on each atom in eV/A, and stress on the system in eV/A^3
 
         :param run_path: directory where the oracle output file resides.
-            If not provided, will be extracted from the workflow using calc_id.
-        :param calc_id: Calculation ID to look up via workflow.get_job_path().
-            Can be int or str depending on workflow implementation.
-        :param workflow: Workflow object from orchestrator that has attached
+            If not provided, will be extracted from the scheduler using calc_id
+        :param calc_id: Calculation ID to look up via scheduler.get_job_path().
+            Can be int or str depending on scheduler implementation.
+        :param scheduler: Scheduler object from orchestrator that has attached
             metadata.
         :returns: Atoms of the configuration and attached properties and a
             dictionary of metadata that should be stored with the
             configuration.
         """
         if not run_path:
-            run_path = workflow.get_job_path(calc_id)
+            run_path = scheduler.get_job_path(calc_id)
         data_file = f'{run_path}/{self.output_filename}'
         # safe_read outputs list but we expect sinlge config
         atoms = safe_read(data_file, format='extxyz')[0]

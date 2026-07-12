@@ -5,7 +5,7 @@ from ase import Atoms, units
 from ase.io import read
 from typing import Union, Optional
 from .oracle_base import Oracle
-from ..workflow.workflow_base import Workflow
+from ..scheduler.scheduler_base import Scheduler
 from ..utils.templates import Templates
 from ..utils.data_standard import (
     ENERGY_KEY,
@@ -30,7 +30,7 @@ class EspressoOracle(Oracle):
         **kwargs,
     ):
         """
-        set variables and initialize the recorder and default workflow
+        set variables and initialize the recorder and default scheduler
 
         :param code_path: path of the QE executable
         :type code_path: str
@@ -154,7 +154,7 @@ class EspressoOracle(Oracle):
 
         this method formats the run command based on the ``code_path`` internal
         variable set at instantiation of the Oracle, which the
-        :class:`~orchestrator.workflow.workflow_base.Workflow` will execute in
+        :class:`~.Scheduler` will execute in
         the proper ``run_path``. ``args`` include parallelization schemes for
         espresso, including: 'nimage', 'npool', and 'nband'. Each will be set
         to 1 if not specified. These are generally passed in as a dictionary,
@@ -180,7 +180,7 @@ class EspressoOracle(Oracle):
         self,
         run_path: str = '',
         calc_id: Union[int, str] = None,
-        workflow: Workflow = None,
+        scheduler: Scheduler = None,
     ) -> Atoms:
         """
         process calculation output to extract data in a consistent format
@@ -192,16 +192,16 @@ class EspressoOracle(Oracle):
         eV/A^3
 
         :param run_path: directory where the oracle output file resides.
-            If not provided, will be extracted from the workflow using calc_id.
-        :param calc_id: Calculation ID to look up via workflow.get_job_path().
-            Can be int or str depending on workflow implementation.
-        :param workflow: Workflow object of Orchestrator.
+            If not provided, will be extracted from the scheduler using calc_id
+        :param calc_id: Calculation ID to look up via scheduler.get_job_path().
+            Can be int or str depending on scheduler implementation.
+        :param scheduler: Scheduler object of Orchestrator.
         :returns: Atoms of the configuration and attached properties and a
             dictionary of metadata that should be stored with the
             configuration.
         """
         if not run_path:
-            run_path = workflow.get_job_path(calc_id)
+            run_path = scheduler.get_job_path(calc_id)
         data_file = f'{run_path}/{self.output_filename}'
         atoms = read(data_file, format='espresso-out')
         atoms.info[ENERGY_KEY] = atoms.get_potential_energy()

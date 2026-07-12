@@ -6,7 +6,7 @@ from aiida.orm import load_node, StructureData
 from aiida.engine.processes.builder import ProcessBuilder
 from aiida.engine.processes.workchains.workchain import WorkChain
 from aiida_quantumespresso.common.types import RelaxType
-from ...workflow.workflow_base import Workflow
+from ...scheduler.scheduler_base import Scheduler
 from ...utils.data_standard import (
     ENERGY_KEY,
     FORCES_KEY,
@@ -53,7 +53,7 @@ class AiidaEspressoOracle(AiidaOracle):
         self,
         run_path: str = '',
         calc_id: int = None,
-        workflow: Workflow = None,
+        scheduler: Scheduler = None,
     ) -> Atoms:
         """
         Process calculation output to extract data in a consistent format.
@@ -67,7 +67,7 @@ class AiidaEspressoOracle(AiidaOracle):
         :param run_path: Unique AiiDA identifier to load a node from the
             database
         :param calc_id: Calculation ID returned from an Oracle.
-        :param workflow: Workflow object from orchestrator that has attached
+        :param scheduler: Scheduler object from orchestrator that has attached
             metadata.
         :returns: tuple of Atoms of the configurations and attached properties
             as well as a dictionary of metadata that should be stored with the
@@ -76,9 +76,9 @@ class AiidaEspressoOracle(AiidaOracle):
 
         load_profile()
 
-        if not calc_id and not workflow:
+        if not calc_id and not scheduler:
             raise RuntimeError(
-                'AiiDA Oracles must have `calc_id` and `workflow` provided.')
+                'AiiDA Oracles must have `calc_id` and `scheduler` provided.')
 
         pk = calc_id
 
@@ -116,7 +116,7 @@ class AiidaEspressoOracle(AiidaOracle):
                 'universal': universal
             }
         }
-        old_metadata = workflow.get_attached_metadata(pk)
+        old_metadata = scheduler.get_attached_metadata(pk)
         combined_metadata = old_metadata | new_metadata
         atoms.info[METADATA_KEY] = combined_metadata
 

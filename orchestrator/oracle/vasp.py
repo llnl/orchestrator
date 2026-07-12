@@ -10,7 +10,7 @@ from pymatgen.io.vasp.inputs import Incar, Kpoints
 from pymatgen.io.vasp.outputs import Vasprun
 from typing import Union
 from .oracle_base import Oracle
-from ..workflow.workflow_base import Workflow
+from ..scheduler.scheduler_base import Scheduler
 from ..utils.data_standard import (
     ENERGY_KEY,
     FORCES_KEY,
@@ -33,7 +33,7 @@ class VaspOracle(Oracle):
         **kwargs,
     ):
         """
-        set variables and initialize the recorder and default workflow
+        set variables and initialize the recorder and default scheduler
 
         :param code_path: path of the VASP executable
         """
@@ -146,7 +146,7 @@ class VaspOracle(Oracle):
 
         this method formats the run command based on the ``code_path`` internal
         variable set at instantiation of the Oracle, which the
-        :class:`~orchestrator.workflow.workflow_base.Workflow` will execute in
+        :class:`~.scheduler_base.Scheduler` will execute in
         the proper ``run_path``.
 
         :returns: single line string with code execution statement
@@ -158,7 +158,7 @@ class VaspOracle(Oracle):
         self,
         run_path: str = '',
         calc_id: Union[int, str] = None,
-        workflow: Workflow = None,
+        scheduler: Scheduler = None,
     ) -> Atoms:
         """
         process calculation output to extract data in a consistent format
@@ -170,16 +170,16 @@ class VaspOracle(Oracle):
         eV/A^3
 
         :param run_path: directory where the oracle output file resides.
-            If not provided, will be extracted from the workflow using calc_id.
-        :param calc_id: Calculation ID to look up via workflow.get_job_path().
-            Can be int or str depending on workflow implementation.
-        :param workflow: Workflow object of Orchestrator.
+            If not provided, will be extracted from the scheduler using calc_id
+        :param calc_id: Calculation ID to look up via scheduler.get_job_path().
+            Can be int or str depending on scheduler implementation.
+        :param scheduler: Scheduler object of Orchestrator.
         :returns: Atoms of the configuration and attached properties and a
             dictionary of metadata that should be stored with the
             configuration.
         """
         if not run_path:
-            run_path = workflow.get_job_path(calc_id)
+            run_path = scheduler.get_job_path(calc_id)
         data_file = f'{run_path}/{self.output_filename}'
         vasprun = Vasprun(f'{run_path}/vasprun.xml')
         if not vasprun.converged_electronic:
@@ -208,8 +208,8 @@ class VaspOracle(Oracle):
             'code_parameters': code_parameters
         }
         if calc_id is not None:
-            new_metadata['data_source'] = f'workflow calc_id<{calc_id}>'
-            old_metadata = workflow.get_attached_metadata(calc_id)
+            new_metadata['data_source'] = f'scheduler calc_id<{calc_id}>'
+            old_metadata = scheduler.get_attached_metadata(calc_id)
             combined_metadata = old_metadata | new_metadata
         else:
             combined_metadata = new_metadata
