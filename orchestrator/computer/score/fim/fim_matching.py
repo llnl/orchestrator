@@ -79,7 +79,7 @@ class FIMMatchingScore(ConfigurationScore):
         """
         Runs the FIM-matching calculation for a batch of atomic configurations.
         This is intended to be able to be used in a serial (non-distributed)
-        manner, outside of a proper orchestrator workflow.
+        manner, outside of a proper orchestrator scheduler.
 
         **Notes:** In other ConfigurationScore modules, the argument
         `score_quantity` comes as the second positional argument. But for FIM-

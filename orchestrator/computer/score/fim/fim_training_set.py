@@ -93,7 +93,7 @@ class FIMTrainingSetScore(ConfigurationScore):
         """
         Runs the FIM calculation for a single atomic configuration. This is
         intended to be able to be used in a serial (non-distributed) manner,
-        outside of a proper orchestrator workflow.
+        outside of a proper orchestrator scheduler.
 
         .. note::
 
@@ -177,7 +177,7 @@ class FIMTrainingSetScore(ConfigurationScore):
         """
         Runs the FIM calculation for a batch of atomic configurations. This is
         intended to be able to be used in a serial (non-distributed) manner,
-        outside of a proper orchestrator workflow.
+        outside of a proper orchestrator scheduler.
 
         .. note::
 

@@ -8,11 +8,11 @@ import shutil
 
 from typing import Optional, Union, Any
 
-from ..workflow.factory import workflow_builder
+from ..scheduler.factory import scheduler_builder
 from ..utils.isinstance import isinstance_no_import
 from ..utils.recorder import Recorder
 from ..utils.exceptions import DatasetDoesNotExistError
-from orchestrator.workflow import Workflow
+from orchestrator.scheduler import Scheduler
 from orchestrator.storage import Storage
 
 
@@ -35,8 +35,8 @@ class Computer(Recorder, ABC):
     def __init__(self, **kwargs):
         super().__init__()
 
-        # set up default workflow and storage
-        self.default_wf = workflow_builder.build(
+        # set up default scheduler and storage
+        self.default_scheduler = scheduler_builder.build(
             'LOCAL',
             {'root_directory': './computer'},
         )
@@ -45,7 +45,7 @@ class Computer(Recorder, ABC):
         """
         Runs the calculation for a single atomic configuration. This is
         intended to be able to be used in a serial (non-distributed) manner,
-        outside of a proper orchestrator workflow.
+        outside of a proper orchestrator scheduler.
 
         :param atoms: the ASE Atoms object
         :type atoms: Atoms
@@ -58,7 +58,7 @@ class Computer(Recorder, ABC):
         """
         Runs the calculation for a batch of atomic configurations. This is
         intended to be able to be used in a serial (non-distributed) manner,
-        outside of a proper orchestrator workflow.
+        outside of a proper orchestrator scheduler.
 
         :param list_of_atoms: a list of ASE Atoms objects
         :type list_of_atoms: list
@@ -73,7 +73,7 @@ class Computer(Recorder, ABC):
     @abstractmethod
     def get_run_command(self, **kwargs) -> str:
         """
-        Return the command to run calculations within a workflow. This allows
+        Return the command to run calculations within a scheduler. This allows
         for distributed execution of ``compute()``.
 
         This method formats the run command, while the args dictionary
@@ -89,7 +89,7 @@ class Computer(Recorder, ABC):
     def get_batched_run_command(self, **kwargs) -> str:
         """
         Similar to ``get_run_command()``, this function is meant to support
-        executing ``compute_batched()`` within a workflow.
+        executing ``compute_batched()`` within a scheduler.
 
         :returns: implementation dependent
         :rtype: implementation dependent
@@ -99,19 +99,19 @@ class Computer(Recorder, ABC):
     @abstractmethod
     def run(self,
             path_type: str,
-            workflow: Optional[Workflow] = None) -> list[int]:
+            scheduler: Optional[Scheduler] = None) -> list[int]:
         """
-        Executes the calculation across a provided workflow. Note that
+        Executes the calculation across a provided scheduler. Note that
         sub-classes may have implementations with additional arguments.
 
-        :param path_type: specifier for the workflow path, to differentiate
+        :param path_type: specifier for the scheduler path, to differentiate
             calculation types.
         :type path_type: str
-        :param workflow: the workflow for managing job submission, if none are
-            supplied, will use the default workflow defined in this class
+        :param scheduler: the scheduler for managing job submission, if none
+            are supplied, will use the default scheduler defined in this class
             |default| ``None``
-        :type workflow: Workflow
-        :returns: a list of calculation IDs from the workflow.
+        :type scheduler: Scheduler
+        :returns: a list of calculation IDs from the scheduler.
         :rtype: list
         """
         raise NotImplementedError
@@ -121,7 +121,7 @@ class Computer(Recorder, ABC):
                              storage: Optional[Storage] = None,
                              dataset_name: Optional[str] = None,
                              dataset_handle: Optional[str] = None,
-                             workflow: Optional[Workflow] = None,
+                             scheduler: Optional[Scheduler] = None,
                              cleanup: Optional[bool] = True) -> str:
         """
         Extract and save computed data to storage.
@@ -136,7 +136,7 @@ class Computer(Recorder, ABC):
             with each config. If calc_ids or explicit paths are supplied, they
             should point to ASE-readable files from which to load the Atoms
             objects.  If calc_ids are supplied, the path is extracted from the
-            :class:`~orchestrator.workflow.workflow_base.JobStatus`. Calc IDs
+            :class:`~orchestrator.scheduler.scheduler_base.JobStatus`. Calc IDs
             are generally prefered as they can also carry metadata with them.
         :type data_pointers: list (of Atoms or int or str)
         :param storage: specific module that handles the staroge of data.
@@ -148,11 +148,11 @@ class Computer(Recorder, ABC):
         :param dataset_handle: the handle to identify where in Storage the
             configurations should be saved.
         :type dataset_handle: str
-        :param workflow: the workflow for managing job submission, if none are
-            supplied, will use the default workflow defined in this class.
-            Should be consistent with the workflow supplied for the run calls.
+        :param scheduler: the scheduler for managing job submission, if none
+            are supplied, will use the default scheduler defined in this class.
+            Should be consistent with the scheduler supplied for the run calls.
             |default| ``None``
-        :type workflow: Workflow
+        :type scheduler: Scheduler
         :param cleanup: a flag indicating whether to delete the temporary
             files. |default| ``True``
         :type cleanup: bool
@@ -168,7 +168,7 @@ class Computer(Recorder, ABC):
         if isinstance(data_pointers[0], Atoms):
             data = data_pointers  # data is already loaded
         else:
-            data = self.data_from_calc_ids(data_pointers, workflow, cleanup)
+            data = self.data_from_calc_ids(data_pointers, scheduler, cleanup)
 
         current_date = datetime.today().strftime('%Y-%m-%d')
         dataset_metadata = {
@@ -227,22 +227,22 @@ class Computer(Recorder, ABC):
         run_path: str = '',
         cleanup: bool = True,
         calc_id: Union[int, str] = None,
-        workflow: Workflow = None,
+        scheduler: Scheduler = None,
     ):
         """
         Process calculation output to extract data in a consistent format
 
         :param run_path: directory where the output resides.
-            If not provided, will be extracted from the workflow using calc_id.
+            If not provided, will be extracted from the scheduler using calc_id
         :type run_path: str
         :param cleanup: a flag indicating whether to delete the temporary
             files. |default| ``True``
         :type cleanup: bool
-        :param calc_id: Calculation ID to look up via workflow.get_job_path().
-            Can be int or str depending on workflow implementation.
+        :param calc_id: Calculation ID to look up via scheduler.get_job_path().
+            Can be int or str depending on scheduler implementation.
         :type calc_id: int or str
-        :param workflow: Workflow object of Orchestrator.
-        :type workflow: Workflow
+        :param scheduler: Scheduler object of Orchestrator.
+        :type scheduler: Scheduler
         :returns: depends upon implementation
         :rtype: depends upon implementation, but should always be a list
         """
@@ -323,36 +323,36 @@ class Computer(Recorder, ABC):
     def data_from_calc_ids(
         self,
         data_pointers: list[Union[int, str]],
-        workflow: Optional[Workflow] = None,
+        scheduler: Optional[Scheduler] = None,
         cleanup: Optional[bool] = True,
     ) -> list[Any]:
         """
         Return the parsed data from a list of calculation IDs.
 
         :param data_pointers: list of calc_ids (int or str) for extracting
-            computed results. String calc_ids are supported for workflows like
+            computed results. String calc_ids are supported for schedulers like
             Flux that use string job IDs.
         :type data_pointers: list[Union[int, str]]
-        :param workflow: the workflow for managing job submission, if none are
-            supplied, will use the default workflow defined in this class
+        :param scheduler: the scheduler for managing job submission, if none
+            are supplied, will use the default scheduler defined in this class
             |default| ``None``
-        :type workflow: Workflow
+        :type scheduler: Scheduler
         :param cleanup: a flag indicating whether to delete the temporary
             files. |default| ``True``
         :type cleanup: bool
         :returns: a list of the computed values
         :rtype: list
         """
-        if workflow is None:
-            workflow = self.default_wf
+        if scheduler is None:
+            scheduler = self.default_scheduler
 
         # Ensure all calculations completed before extracting
         self.logger.info('Ensuring all calculations completed...')
-        workflow.block_until_completed(data_pointers)
+        scheduler.block_until_completed(data_pointers)
 
-        # Use workflow method to resolve calc_ids to paths
+        # Use scheduler method to resolve calc_ids to paths
         # allow_paths=False means only calc_ids are accepted, not file paths
-        data_paths, existing_metadata = workflow.resolve_calc_paths(
+        data_paths, existing_metadata = scheduler.resolve_calc_paths(
             data_pointers, allow_paths=False)
 
         self.logger.info((f'Extracting configs from {len(data_paths)} '

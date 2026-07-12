@@ -18,7 +18,7 @@ from orchestrator.potential import Potential, potential_factory
 from orchestrator.target_property import (TargetProperty,
                                           target_property_builder)
 from orchestrator.storage import storage_builder
-from orchestrator.workflow import workflow_builder
+from orchestrator.scheduler import scheduler_builder
 from orchestrator.utils.data_standard import PLACEHOLDER_ARRAY_KEY
 from orchestrator.utils.isinstance import isinstance_no_import
 
@@ -87,11 +87,12 @@ class FIMPropertyScore(ModelScore):
         # We need this cwd when building the potential
         self._cwd = Path(os.getcwd()).resolve()
 
-        # Default workflow --- we need this default workflow so that we can
+        # Default scheduler --- we need this default scheduler so that we can
         # place all the temporary files in a single, same directory.
-        self.default_target_property_wf = workflow_builder.build(
+        self.default_target_property_scheduler = scheduler_builder.build(
             'LOCAL', {'root_directory': self.property_output_dir})
-        self._target_property_workflow = None  # Need this to cleanup directory
+        self._target_property_scheduler = None
+        # Need this to cleanup directory
 
     def compute(self,
                 target_property: dict,
@@ -107,7 +108,7 @@ class FIMPropertyScore(ModelScore):
         """
         Run the FIM calculation for a single target property. This is
         intended to be able to be used in a serial (non-distributed) manner,
-        outside of a proper orchestrator workflow.
+        outside of a proper orchestrator scheduler.
 
         .. note::
 
@@ -200,7 +201,7 @@ class FIMPropertyScore(ModelScore):
         """
         Runs the FIM calculation for a batch of atomic configurations. This is
         intended to be able to be used in a serial (non-distributed) manner,
-        outside of a proper orchestrator workflow.
+        outside of a proper orchestrator scheduler.
 
         This method returns a list of FIMs, where the order of the list matches
         the order of the `list_of_target_property` input argument.
@@ -604,8 +605,8 @@ class FIMPropertyScore(ModelScore):
         :returns: (q,) np.ndarray of the predictions
         :rtype: np.ndarray
         """
-        # Workflow
-        workflow = calculate_property_args.pop('workflow', None)
+        # Scheduler
+        scheduler = calculate_property_args.pop('scheduler', None)
         # Storage
         storage = calculate_property_args.pop('storage', None)
 
@@ -615,7 +616,7 @@ class FIMPropertyScore(ModelScore):
         # is still currently not supported currently for melting point).
         preds = target_property.calculate_property(iter_num=pnum,
                                                    potential=potential,
-                                                   workflow=workflow,
+                                                   scheduler=scheduler,
                                                    storage=storage,
                                                    **calculate_property_args)
         return direction, self._convert_target_property_output(preds)
@@ -730,21 +731,22 @@ class FIMPropertyScore(ModelScore):
             need_to_save_potential_to_kimkit = False
 
         # Before running the target property calculations, I think we should
-        # use a single workflow. At least, I noticed that if we create
-        # different workflow for every calculation instance, the workflow
+        # use a single scheduler. At least, I noticed that if we create
+        # different scheduler for every calculation instance, the scheduler
         # counter always resets and we cannot update the potential
         modified_args = calculate_property_args.copy()
-        # Workflow
-        wf_inputs = modified_args.get('workflow')
-        if wf_inputs:
-            if 'root_directory' not in wf_inputs['workflow_args']:
-                wf_inputs['workflow_args']['root_directory'] = (
-                    self.default_target_property_wf.root_directory)
-            modified_args['workflow'] = workflow_builder.build(
-                wf_inputs['workflow_type'], wf_inputs['workflow_args'])
+        # Scheduler
+        scheduler_inputs = modified_args.get('scheduler')
+        if scheduler_inputs:
+            if 'root_directory' not in scheduler_inputs['scheduler_args']:
+                scheduler_inputs['scheduler_args']['root_directory'] = (
+                    self.default_target_property_scheduler.root_directory)
+            modified_args['scheduler'] = scheduler_builder.build(
+                scheduler_inputs['scheduler_type'],
+                scheduler_inputs['scheduler_args'])
         else:
-            modified_args['workflow'] = self.default_wf
-        self._target_property_workflow = modified_args['workflow']
+            modified_args['scheduler'] = self.default_scheduler
+        self._target_property_scheduler = modified_args['scheduler']
         # Storage
         storage_inputs = modified_args.get('storage')
         if storage_inputs:

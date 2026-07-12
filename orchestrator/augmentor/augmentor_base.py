@@ -18,7 +18,7 @@ from ..utils.exceptions import CellTooSmallError
 from ..utils.isinstance import isinstance_no_import
 from ..utils.recorder import Recorder
 from ..utils.restart import restarter
-from ..workflow import Workflow
+from ..scheduler import Scheduler
 from ..utils.structure_analysis_and_manipulation_tools import (
     extract_env,
     find_central_atom,
@@ -71,7 +71,7 @@ class Augmentor(Recorder):
         **kwargs: dict,
     ):
         """
-        set variables and initialize the recorder and default workflow
+        set variables and initialize the recorder and default scheduler
 
         :param default_iteration_limit: iteration limit for iterative FPS
             algorithms used within the Augmentor, can be overridden by method
@@ -141,7 +141,7 @@ class Augmentor(Recorder):
         reference_dataset: Union[Atoms, list[Atoms]],
         score_module: ScoreBase,
         score_compute_args: dict[str, Any],
-        workflow: Workflow,
+        scheduler: Scheduler,
         job_details: Optional[dict[str, Union[str, int]]] = None,
         batch_size: Optional[int] = 1,
         test_criteria: Optional[float] = 0.0,
@@ -168,10 +168,10 @@ class Augmentor(Recorder):
             the score module. Must include the 'descriptors_key' key for the
             precomputed descriptors.
         :type score_compute_args: str
-        :param workflow: Workflow module to use for computing scores
-        :type workflow: Workflow
+        :param scheduler: Scheduler module to use for computing scores
+        :type scheduler: Scheduler
         :param job_details: dict that includes any additional parameters for
-            running the job (passed to :meth:`~.Workflow.submit_job`)
+            running the job (passed to :meth:`~.Scheduler.submit_job`)
             |default| ``None``
         :type job_details: dict
         :param batch_size: number of configurations to pass to
@@ -227,7 +227,7 @@ class Augmentor(Recorder):
                 'identify_novel_environments',
                 configs_to_evaluate,
                 full_score_compute_args,
-                workflow,
+                scheduler,
                 job_details,
                 batch_size,
             )  # verbose not used here
@@ -239,7 +239,7 @@ class Augmentor(Recorder):
 
         # parse the output
         # wait for job to complete is done in data_from_calc_ids
-        scored_configs = score_module.data_from_calc_ids(calc_ids, workflow)
+        scored_configs = score_module.data_from_calc_ids(calc_ids, scheduler)
         novelty_scores = [
             config.get_array(f'{score_module.OUTPUT_KEY}_score')
             for config in scored_configs
@@ -423,7 +423,7 @@ class Augmentor(Recorder):
         reference_dataset: Union[Atoms, list[Atoms]],
         score_module: ScoreBase,
         score_compute_args: dict[str, Any],
-        workflow: Workflow,
+        scheduler: Scheduler,
         extract_rc: float,
         extract_box_size: float,
         min_dist_delete: Optional[float] = 0.7,
@@ -456,8 +456,8 @@ class Augmentor(Recorder):
             the score module. Must include the 'descriptors_key' key for the
             precomputed descriptors.
         :type score_compute_args: str
-        :param workflow: Workflow module to use for computing scores
-        :type workflow: Workflow
+        :param scheduler: Scheduler module to use for computing scores
+        :type scheduler: Scheduler
         :param extract_rc: cutoff radius to extract and constrain positions in
             Angstroms
         :type extract_rc: float
@@ -516,7 +516,7 @@ class Augmentor(Recorder):
             reference_dataset,
             score_module,
             score_compute_args,
-            workflow,
+            scheduler,
             job_details,
             batch_size,
         )
@@ -815,7 +815,7 @@ class Augmentor(Recorder):
         prune_large_value: bool,
         score_args: dict,
         score_module: ScoreBase,
-        workflow: Workflow,
+        scheduler: Scheduler,
         storage: Optional[Storage] = None,
     ) -> list[Atoms]:
         """
@@ -848,8 +848,8 @@ class Augmentor(Recorder):
         :param score_module: instantiated Score module which provides compute
             functions for obtaining a score value for a given dataset.
         :type score_module: ScoreBase
-        :param workflow: Workflow module to use for computing scores
-        :type workflow: Workflow
+        :param scheduler: Scheduler module to use for computing scores
+        :type scheduler: Scheduler
         :param storage: Storage module where the dataset is stored if the
             ``dataset`` argument is a dataset_handle. Otherwise this argument
             is not necessary.
@@ -895,12 +895,12 @@ class Augmentor(Recorder):
                 'augmentor_score_for_pruning',
                 score_args,
                 dataset,
-                workflow,
+                scheduler,
                 job_details=None,
                 batch_size=1,
                 verbose=False,
             )
-            workflow.block_until_completed(calc_ids)
+            scheduler.block_until_completed(calc_ids)
             self.logger.info('Scores done computing')
             scored_configs = score_module.data_from_calc_ids(calc_ids)
 
@@ -990,10 +990,10 @@ class Augmentor(Recorder):
         efficiency_metric = score_module.compute(dataset, **score_compute_args)
         # if running online - generally fast enough to just do in memory
         # calc_id = score_module.run('estimate_pruning_ratio', dataset,
-        #                            score_compute_args, workflow)
-        # workflow.block_until_completed(calc_id)
+        #                            score_compute_args, scheduler)
+        # scheduler.block_until_completed(calc_id)
         # efficiency_metric = score_module.parse_for_storage(
-        #     workflow.get_job_path(calc_id))
+        #     scheduler.get_job_path(calc_id))
 
         # currently compute returns an array
         efficiency_metric = efficiency_metric[0]
@@ -1903,7 +1903,7 @@ class Augmentor(Recorder):
         self,
         dimers: list[Atoms],
         simulator: Simulator,
-        workflow: Workflow,
+        scheduler: Scheduler,
         forcefield_file: str,
         structure_data_file: str,
         include_files: list[str],
@@ -1920,8 +1920,8 @@ class Augmentor(Recorder):
         :type dimers: list of Atoms
         :param simulator: simulator to drive the evaluation
         :type simulator: Simulator
-        :param workflow: Workflow to manage the calculations
-        :type workflow: Workflow
+        :param scheduler: Scheduler to manage the calculations
+        :type scheduler: Scheduler
         :param forcefield_file: force field style file
         :type forcefield_file: str
         :param structure_data_file: structure definition file
@@ -1980,7 +1980,7 @@ class Augmentor(Recorder):
                 simulation_files,
                 input_args,
                 input_template=simulator_template_file,
-                workflow=workflow,
+                scheduler=scheduler,
                 job_details=job_details,
             )
             self.current_method = 'dimer_simulator-waiting'
@@ -1988,10 +1988,10 @@ class Augmentor(Recorder):
             self.checkpoint_augmentor()
 
         # wait for the job to finish
-        workflow.block_until_completed(calc_id)
+        scheduler.block_until_completed(calc_id)
 
         # parse the output
-        run_path = workflow.get_job_path(calc_id)
+        run_path = scheduler.get_job_path(calc_id)
         lammps_log = AnalyzeLammpsLog(f'{run_path}/lammps.out')
         units = lammps_log.get_units()
         energies = lammps_log.get('TotEng')
@@ -2026,7 +2026,7 @@ class Augmentor(Recorder):
         self,
         dimers: list[Atoms],
         oracle: Oracle,
-        workflow: Workflow,
+        scheduler: Scheduler,
         input_args: dict[str, Any],
         job_details: Optional[dict[str, Any]] = None,
     ) -> list[Atoms]:
@@ -2040,8 +2040,8 @@ class Augmentor(Recorder):
         :type dimers: list of Atoms
         :param oracle: oracle to evaluate the dimers with
         :type oracle: Oracle
-        :param workflow: Workflow to manage the calculations
-        :type workflow: Workflow
+        :param scheduler: Scheduler to manage the calculations
+        :type scheduler: Scheduler
         :param input_args: dcitionary of oracle settings
         :type input_args: dict
         :param job_details: dictionary of optional job details for the oracle
@@ -2058,20 +2058,20 @@ class Augmentor(Recorder):
                 'dimer_oracle_eval',
                 input_args,
                 dimers,
-                workflow=workflow,
+                scheduler=scheduler,
                 job_details=job_details,
             )
             self.current_method = 'dimer_oracle-waiting'
             self.outstanding_jobs = calc_ids
             self.checkpoint_augmentor()
 
-        workflow.block_until_completed(calc_ids)
+        scheduler.block_until_completed(calc_ids)
 
         # parse the output, we don't need to save the calculation params
-        parsed_dimers, _ = oracle.data_from_calc_ids(calc_ids, workflow)
+        parsed_dimers, _ = oracle.data_from_calc_ids(calc_ids, scheduler)
 
         # use the last calculation as the save path?
-        run_path = workflow.get_job_path(calc_ids[-1])
+        run_path = scheduler.get_job_path(calc_ids[-1])
 
         # x-axis is rotation
         # y-axis is separation

@@ -11,7 +11,7 @@ from typing import Optional, Any, Union
 from .. import Computer
 from orchestrator.utils.data_standard import METADATA_KEY
 from orchestrator.utils.input_output import safe_read
-from orchestrator.workflow import Workflow
+from orchestrator.scheduler import Scheduler
 
 
 class DescriptorBase(Computer):
@@ -40,7 +40,7 @@ class DescriptorBase(Computer):
         """
         Runs the calculation for a single atomic configuration. This is
         intended to be able to be used in a serial (non-distributed) manner,
-        outside of a proper orchestrator workflow.
+        outside of a proper orchestrator scheduler.
 
         :param atoms: the ASE Atoms object
         :type atoms: Atoms
@@ -55,7 +55,7 @@ class DescriptorBase(Computer):
         """
         Runs the calculation for a batch of atomic configurations. This is
         intended to be able to be used in a serial (non-distributed) manner,
-        outside of a proper orchestrator workflow.
+        outside of a proper orchestrator scheduler.
 
         :param list_of_atoms: a list of ASE Atoms objects
         :type list_of_atoms: list
@@ -67,7 +67,7 @@ class DescriptorBase(Computer):
 
     def get_run_command(self, **kwargs) -> str:
         """
-        Return the command to run calculations within a workflow. This allows
+        Return the command to run calculations within a scheduler. This allows
         for distributed execution of ``compute()``.
 
         :returns: string for execution via command line
@@ -81,7 +81,7 @@ class DescriptorBase(Computer):
     def get_batched_run_command(self, **kwargs) -> str:
         """
         Similar to ``get_run_command()``, this function is meant to support
-        executing ``compute_batch()`` within a workflow.
+        executing ``compute_batch()`` within a scheduler.
 
         :returns: string for execution via command line
         :rtype: str
@@ -103,7 +103,7 @@ class DescriptorBase(Computer):
             path_type: str,
             compute_args: dict,
             configs: list[Atoms],
-            workflow: Optional[Workflow] = None,
+            scheduler: Optional[Scheduler] = None,
             job_details: Optional[dict[str, Any]] = None,
             batch_size: Optional[int] = 1,
             verbose: Optional[bool] = False) -> list[int]:
@@ -115,10 +115,10 @@ class DescriptorBase(Computer):
         taking atomic configurations as input and handling the submission of
         calculations to obtain the computed results. `configs` is a dataset of
         1 or more structures. run() will create independent jobs for
-        each batch of structures using the supplied workflow, with job_details
+        each batch of structures using the supplied scheduler, with job_details
         parameterizing the job submission.
 
-        :param path_type: specifier for the workflow path, to differentiate
+        :param path_type: specifier for the scheduler path, to differentiate
             calculation types
         :type path_type: str
         :param compute_args: input arguments to fill out the input file
@@ -126,13 +126,13 @@ class DescriptorBase(Computer):
         :param configs: list of configurations as ASE atoms to run ground truth
             calculations for
         :type configs: list
-        :param workflow: the workflow for managing job submission, if none are
-            supplied, will use the default workflow defined in this class
+        :param scheduler: the scheduler for managing job submission, if none
+            are supplied, will use the default scheduler defined in this class
             |default| ``None``
-        :type workflow: Workflow
+        :type scheduler: Scheduler
         :param job_details: dict that includes any additional parameters for
             running the job (passed to
-            :meth:`~orchestrator.workflow.workflow_base.Workflow.submit_job`)
+            :meth:`~.scheduler_base.Scheduler.submit_job`)
             |default| ``{}``
         :type job_details: dict
         :param batch_size: number of configurations to pass to ``compute()`` at
@@ -140,7 +140,7 @@ class DescriptorBase(Computer):
         :type batch_size: int
         :param verbose: if True, show progress
         :type batch_size: bool
-        :returns: a list of calculation IDs from the workflow.
+        :returns: a list of calculation IDs from the scheduler.
         :rtype: list
         """
         module_name = self.__class__.__name__
@@ -149,10 +149,10 @@ class DescriptorBase(Computer):
         if job_details is None:
             job_details = {}
 
-        if workflow is None:
-            workflow = self.default_wf
+        if scheduler is None:
+            scheduler = self.default_scheduler
 
-        path_base = workflow.make_path_base(module_name, path_type)
+        path_base = scheduler.make_path_base(module_name, path_type)
         self.path_base = path_base
         num_calcs = len(configs)
         self.logger.info(f'Spinning up {num_calcs} {module_name} calculations')
@@ -171,7 +171,7 @@ class DescriptorBase(Computer):
         for frames in tqdm(batch_indices,
                            desc='Computing...',
                            disable=not verbose):
-            run_path = workflow.make_path(module_name, path_type)
+            run_path = scheduler.make_path(module_name, path_type)
             self.write_input(run_path, compute_args,
                              [configs[i] for i in frames])
             modified_job_details = deepcopy(job_details)
@@ -195,7 +195,7 @@ class DescriptorBase(Computer):
             else:
                 computer_command = self.get_run_command(**modified_job_details)
 
-            calc_id = workflow.submit_job(
+            calc_id = scheduler.submit_job(
                 computer_command,
                 run_path,
                 job_details=modified_job_details,
@@ -253,7 +253,7 @@ class DescriptorBase(Computer):
         run_path: str = '',
         cleanup: bool = True,
         calc_id: Union[int, str] = None,
-        workflow: Workflow = None,
+        scheduler: Scheduler = None,
     ) -> list[Atoms]:
         """
         Process calculation output as ASE Atoms, then clean up.
@@ -261,23 +261,23 @@ class DescriptorBase(Computer):
         Use ASE's read() function to parse the xyz file written by this module,
         then run cleanup() to remove any unnecessary temporary files.
 
-        :param run_path: directory where the output file resides.
-            If not provided, will be extracted from the workflow using calc_id.
+        :param run_path: directory where the output file resides. If not
+            provided, will be extracted from the scheduler using calc_id.
         :type run_path: str
         :param cleanup: a flag indicating whether to delete the temporary
             files. |default| ``True``
         :type cleanup: bool
-        :param calc_id: Calculation ID to look up via workflow.get_job_path().
-            Can be int or str depending on workflow implementation.
+        :param calc_id: Calculation ID to look up via scheduler.get_job_path().
+            Can be int or str depending on scheduler implementation.
         :type calc_id: int or str
-        :param workflow: Workflow object of Orchestrator.
-        :type workflow: Workflow
+        :param scheduler: Scheduler object of Orchestrator.
+        :type scheduler: Scheduler
         :returns: Atoms of the configurations with attached properties and
             metadata
         :rtype: list of Atoms
         """
         if not run_path:
-            run_path = workflow.get_job_path(calc_id)
+            run_path = scheduler.get_job_path(calc_id)
         data_file = os.path.join(run_path, self.atoms_file_name)
 
         results = safe_read(data_file, format='extxyz', index=':')
