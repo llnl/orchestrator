@@ -34,11 +34,11 @@ except FileNotFoundError as e:
 
 # Training
 print("Training model")
-workflow = init_and_validate_module_type(
-    "workflow",
+scheduler = init_and_validate_module_type(
+    "scheduler",
     {
-        "workflow_type": "LOCAL",
-        "workflow_args": {
+        "scheduler_type": "LOCAL",
+        "scheduler_args": {
             "root_directory": ".",
             "wait_freq": 20,
         },
@@ -60,7 +60,7 @@ storage = init_and_validate_module_type(
 model.train(
     dataset_list=["DS_ID_FOR_CHIMES"],
     storage=storage,
-    workflow=workflow,
+    scheduler=scheduler,
     energy_weight=1.0,
     force_weight=1.0,
     stress_weight=0.0,
@@ -88,7 +88,7 @@ model = NequIPAllegroPotential(
 calc_id = model.submit_train(
     dataset_list=["DS_ID_FOR_CHIMES"],
     storage=storage,
-    workflow=workflow,
+    scheduler=scheduler,
     job_details={},
     energy_weight=1.0,
     force_weight=1.0,
@@ -100,7 +100,7 @@ calc_id = model.submit_train(
     per_atom_weights=None,
 )
 
-model.load_from_submitted_training(calc_id, workflow)
+model.load_from_submitted_training(calc_id, scheduler)
 model.save_potential("from_submit_train", makedirs=True)
 
 print("Done!")
