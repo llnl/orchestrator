@@ -14,8 +14,8 @@ Coordinating Modules
    api_docs/orchestrator.augmentor
    api_docs/orchestrator.target_property
 
-Atomic Modules
---------------
+Functional Modules
+------------------
 
 .. toctree::
 
@@ -32,7 +32,7 @@ Utility Modules
 
 .. toctree::
 
-   api_docs/orchestrator.workflow
+   api_docs/orchestrator.scheduler
    api_docs/orchestrator.storage
    api_docs/orchestrator.restart
    api_docs/orchestrator.factory

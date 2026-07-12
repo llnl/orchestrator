@@ -53,36 +53,36 @@ Tested modules:
 * :class:`~.AiidaVaspOracle`
 * :class:`~.AiidaEspressoOracle`
 
-Workflow Test
-^^^^^^^^^^^^^
+Scheduler Test
+^^^^^^^^^^^^^^
 
-The workflow module has comprehensive unit tests covering both core functionality and scheduler-specific implementations. Tests are organized into three categories:
+The scheduler module has comprehensive unit tests covering both core functionality and scheduler-specific implementations. Tests are organized into three categories:
 
-**Unit Tests** (``workflow_unit_testers.py``)
+**Unit Tests** (``scheduler_unit_testers.py``)
 
-Core workflow functionality tests that work with any workflow implementation:
+Core scheduler functionality tests that work with any scheduler implementation:
 
-* ``workflow_local_submit_test``: Basic job submission, execution, status tracking, and dependency handling using :class:`~orchestrator.workflow.local.LocalWF`
-* ``workflow_path_management_test``: Directory creation with ``make_path`` and ``make_path_base``, counter incrementation, and path hierarchy
-* ``workflow_checkpoint_restart_test``: State serialization, job dictionary persistence, and state restoration across workflow instances
-* ``workflow_job_status_test``: Job status retrieval (``get_job_status``, ``get_job_path``, ``get_attached_metadata``, ``get_all_statuses``)
-* ``workflow_restart_job_test``: Job restart functionality including file copying, path replacement in copied files, job detail merging, and resubmission
+* ``scheduler_local_submit_test``: Basic job submission, execution, status tracking, and dependency handling using :class:`~orchestrator.scheduler.local.LocalScheduler`
+* ``scheduler_path_management_test``: Directory creation with ``make_path`` and ``make_path_base``, counter incrementation, and path hierarchy
+* ``scheduler_checkpoint_restart_test``: State serialization, job dictionary persistence, and state restoration across scheduler instances
+* ``scheduler_job_status_test``: Job status retrieval (``get_job_status``, ``get_job_path``, ``get_attached_metadata``, ``get_all_statuses``)
+* ``scheduler_restart_job_test``: Job restart functionality including file copying, path replacement in copied files, job detail merging, and resubmission
 
-**Mock Tests** (``workflow_hpc_mock_testers.py``)
+**Mock Tests** (``scheduler_hpc_mock_testers.py``)
 
 Tests for HPC scheduler implementations using mocked subprocess calls (no actual scheduler required):
 
-* ``workflow_mock_slurm_submit_test``: Tests :class:`~orchestrator.workflow.slurm.SlurmWF` job ID extraction from ``sbatch`` output and batch file generation
-* ``workflow_mock_flux_submit_test``: Tests :class:`~orchestrator.workflow.flux.FluxWF` job ID format handling and submission script creation
-* ``workflow_mock_lsf_submit_test``: Tests :class:`~orchestrator.workflow.lsf.LSFWF` job ID parsing from ``bsub`` output and LSF-specific options
+* ``scheduler_mock_slurm_submit_test``: Tests :class:`~orchestrator.scheduler.slurm.SlurmScheduler` job ID extraction from ``sbatch`` output and batch file generation
+* ``scheduler_mock_flux_submit_test``: Tests :class:`~orchestrator.scheduler.flux.FluxScheduler` job ID format handling and submission script creation
+* ``scheduler_mock_lsf_submit_test``: Tests :class:`~orchestrator.scheduler.lsf.LSFScheduler` job ID parsing from ``bsub`` output and LSF-specific options
 
-**Integration Tests** (``workflow_hpc_real_testers.py``)
+**Integration Tests** (``scheduler_hpc_real_testers.py``)
 
 Full integration tests that submit real jobs to HPC schedulers (only run when scheduler is available):
 
-* ``workflow_real_slurm_submit_test``: Complete lifecycle test for :class:`~orchestrator.workflow.slurm.SlurmWF` including synchronous jobs, dependent jobs, async submission with status polling, and job restart functionality
-* ``workflow_real_flux_submit_test``: Integration test for :class:`~orchestrator.workflow.flux.FluxWF` with Flux-specific job ID validation
-* ``workflow_real_lsf_submit_test``: Integration test for :class:`~orchestrator.workflow.lsf.LSFWF` with LSF scheduler
+* ``scheduler_real_slurm_submit_test``: Complete lifecycle test for :class:`~orchestrator.scheduler.slurm.SlurmScheduler` including synchronous jobs, dependent jobs, async submission with status polling, and job restart functionality
+* ``scheduler_real_flux_submit_test``: Integration test for :class:`~orchestrator.scheduler.flux.FluxScheduler` with Flux-specific job ID validation
+* ``scheduler_real_lsf_submit_test``: Integration test for :class:`~orchestrator.scheduler.lsf.LSFScheduler` with LSF scheduler
 
 Integration tests automatically detect scheduler availability by checking if the submission commands (``sbatch``, ``flux``, ``bsub``) are in the system PATH.
 
@@ -90,11 +90,11 @@ Integration tests automatically detect scheduler availability by checking if the
 
    Integration tests will attempt to run if the scheduler submission commands are found in PATH, even if you are not on the actual HPC system. This can occur if these commands are installed locally for development or testing purposes. Always verify you are on the correct system before running integration tests, as they will submit real jobs to whatever scheduler is available.
 
-Other workflow implementations that can be tested include:
+Other scheduler implementations that can be tested include:
 
-* :class:`~orchestrator.workflow.aiida.AiidaWF`
+* :class:`~orchestrator.scheduler.aiida.AiidaScheduler`
 
-Refer to the ``workflow`` block in the input files for usage examples.
+Refer to the ``scheduler`` block in the input files for usage examples.
 
 Simulator Test
 ^^^^^^^^^^^^^^
@@ -115,11 +115,11 @@ The |target| tests run copper :class:`~orchestrator.target_property.melting_poin
 :class:`~orchestrator.target_property.kimrun.KIMRun` has two tests for
 W, confirming correct predictions for some basic material properties using
 a KIM Simulator Model and KIM Tests found in KIMKit. The two tests invoke
-the Singularity container using two different workflows --
-:class:`~orchestrator.workflow.local.LocalWF` and
-:class:`~orchestrator.workflow.slurm.SlurmWF`. An additional two tests,
+the Singularity container using two different schedulers --
+:class:`~orchestrator.scheduler.local.LocalScheduler` and
+:class:`~orchestrator.scheduler.slurm.SlurmScheduler`. An additional two tests,
 both demonstrating the calculation of a cold curve for diamond Si using
-Stillinger-Weber using :class:`~.LocalWF`, test the usage of :class:`~.KIMRun`
+Stillinger-Weber using :class:`~.LocalScheduler`, test the usage of :class:`~.KIMRun`
 with :class:`~.potential_base.Potential`. :class:`~.KIMRun` works with
 :class:`~.potential_base.Potential` objects whose
 :meth:`~.Potential.save_potential_files` function saves an archive of a
@@ -196,7 +196,7 @@ To add tests for new functionality or to increase coverage:
 #. Run ``setup_tests.zsh`` to load your new tests and ensure they run and pass their pytests.
 
 
-.. |workflow| replace:: :class:`~orchestrator.workflow.workflow_base.Workflow`
+.. |scheduler| replace:: :class:`~.scheduler_base.Scheduler`
 .. |oracle| replace:: :class:`~orchestrator.oracle.oracle_base.Oracle`
 .. |score| replace:: :class:`~orchestrator.computer.score.score_base.ScoreBase`
 .. |simulator| replace::

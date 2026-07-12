@@ -309,9 +309,9 @@ given below.::
                   }
               },
               'calculate_property_args': {
-                  'workflow': {
-                      'workflow_type': 'LOCAL',
-                      'workflow_args': {}
+                  'scheduler': {
+                      'scheduler_type': 'LOCAL',
+                      'scheduler_args': {}
                   }
               }
           }

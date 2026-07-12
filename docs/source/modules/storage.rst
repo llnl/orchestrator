@@ -110,22 +110,22 @@ into a script could look like:
 
    .. code-block:: python
 
-      # Should previously have instantiated the oracle, storage, and workflow
+      # Should previously have instantiated the oracle, storage, and scheduler
       # classes.
       calc_ids = oracle.run(
          path_type="tests",
          input_args=extra_input_args,
          configs=init_configs,
-         workflow=workflow,
+         scheduler=scheduler,
          job_details=job_details
       )
 
-      workflow.block_until_completed(calc_ids)
+      scheduler.block_until_completed(calc_ids)
 
       oracle.save_labeled_configs(
          calc_ids,
          storage,
-         workflow=workflow
+         scheduler=scheduler
       )
 
 These examples show that
@@ -155,14 +155,14 @@ created.
       import os
       from datetime import datetime
       from orchestrator.oracle.espresso import EspressoOracle
-      from orchestrator.workflow.local import LocalWF
+      from orchestrator.scheduler.local import LocalScheduler
       from orchestrator.storage.colabfit import ColabfitStorage
       from orchestrator.utils.data_standard import METADATA_KEY
 
-      # Initialize the oracle, workflow, and storage types.
+      # Initialize the oracle, scheduler, and storage types.
       # This example will assume Quantum Espresso was used.
       oracle = EspressoOracle(code_path='/path/to/pw.x')
-      workflow = LocalWF()
+      scheduler = LocalScheduler()
       storage = ColabfitStorage(credential_file='/path/to/credential_file')
 
       # Set the paths to where the calculations occured.

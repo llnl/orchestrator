@@ -60,9 +60,9 @@ sections. Three different examples using :class:`~.VaspOracle`, :class:`~.Espres
                "walltime":5
             }
          },
-         "workflow":{
-            "workflow_type":"<ASYNCH_WORKFLOW>",
-            "workflow_args":{
+         "scheduler":{
+            "scheduler_type":"<ASYNCH_SCHEDULER>",
+            "scheduler_args":{
                "root_directory":"./oracle",
                "queue":"<HPC_QUEUE>",
                "account":"<HPC_ACCOUNT>",
@@ -99,9 +99,9 @@ sections. Three different examples using :class:`~.VaspOracle`, :class:`~.Espres
                }
             }
          },
-         "workflow":{
-            "workflow_type":"<ASYNCH_WORKFLOW>",
-            "workflow_args":{
+         "scheduler":{
+            "scheduler_type":"<ASYNCH_SCHEDULER>",
+            "scheduler_args":{
                "root_directory":"./oracle",
                "queue":"<HPC_QUEUE>",
                "account":"<HPC_ACCOUNT>",
@@ -141,18 +141,18 @@ sections. Three different examples using :class:`~.VaspOracle`, :class:`~.Espres
                "database_path": "/path/to/local/storage"
             }
          },
-         "workflow":{
-            "workflow_type": "AiiDA",
-            "workflow_args": {
+         "scheduler":{
+            "scheduler_type": "AiiDA",
+            "scheduler_args": {
                "root_directory": "./oracle",
                "tasks": 1
             }
          }
       }
 
-The values available for the :class:`~.Workflow` module can be seen in the
-documentation for :class:`~orchestrator.workflow.workflow_base.Workflow` or
-:class:`~orchestrator.workflow.workflow_base.HPCWorkflow` where the latter
+The values available for the :class:`~.Scheduler` module can be seen in the
+documentation for :class:`~orchestrator.scheduler.scheduler_base.Scheduler` or
+:class:`~orchestrator.scheduler.scheduler_base.HPCScheduler` where the latter
 would likely be the normal use case.
 
 You will notice in the input files that the input parameters for the
@@ -208,9 +208,9 @@ the simulation to the oracle.
       # Initialize each module for later use.
       oracle_inputs = all_inputs.get('oracle', all_inputs)
       oracle = init_and_validate_module_type('oracle', oracle_inputs, True)
-      workflow = init_and_validate_module_type('workflow', all_inputs)
-      if workflow is None:
-         workflow = oracle.default_wf
+      scheduler = init_and_validate_module_type('scheduler', all_inputs)
+      if scheduler is None:
+         scheduler = oracle.default_scheduler
       storage = init_and_validate_module_type('storage', all_inputs)
 
       # Read in the configurations for simulations.
@@ -229,26 +229,26 @@ the simulation to the oracle.
          oracle_inputs.get('path_type'),
          oracle_inputs.get('extra_input_args'),
          configs,
-         workflow=workflow,
+         scheduler=scheduler,
          job_details=oracle_inputs.get('job_details', {}),
       )
 
       # Have orchestrator wait for the jobs.
-      workflow.block_until_completed(calc_ids)
+      scheduler.block_until_completed(calc_ids)
 
       # Save information from the simulations.
       new_handle = oracle.save_labeled_configs(
          calc_ids,
          storage=storage,
          dataset_name='run_01',
-         workflow=workflow,
+         scheduler=scheduler,
       )
       print(f'Labeled configurations saved to {new_handle}')
       saved_data = storage.get_data(new_handle)
       for config, calc_id in zip(saved_data, calc_ids):
-         save_path = workflow.get_job_path(calc_id)
+         save_path = scheduler.get_job_path(calc_id)
          if save_path is None:
-            save_path = workflow.make_path(oracle.__class__.__name__,
+            save_path = scheduler.make_path(oracle.__class__.__name__,
                                            f'{oracle_inputs.get('path_type')}_{calc_id}')
          safe_write(f'{save_path}/saved_config.extxyz', config)
 

@@ -34,7 +34,7 @@ perform the training, saving the trained potential to disk at the end. By
 default, both methods will attempt to upload the trained potential to kimkit,
 iterating the version number if working off of a current kimkit potential, or
 creating a new kimID otherwise. The
-:meth:`~orchestrator.test.unit_testers.trainer_potential_workflow_test` serves
+:meth:`~orchestrator.test.unit_testers.trainer_potential_scheduler_test` serves
 as an example of how to use trainers, though they disable the kimkit upload and
 pull data from test databases.
 
@@ -53,12 +53,12 @@ Hyperparameter and Settings Control
 The :meth:`~orchestrator.trainer.trainer_base.Trainer.train` and
 :meth:`~orchestrator.trainer.trainer_base.Trainer.submit_train` methods require
 four things: a string used to define the name of the directory path that the
-:class:`~orchestrator.workflow.Workflow` will create, the related
+:class:`~orchestrator.scheduler.Scheduler` will create, the related
 :class:`~orchestrator.potential.potential_base.Potential` class object, a
 :class:`~orchestrator.storage.storage_base.Storage` class object, and a list
 of the dataset IDs to pull from the storage object. Additionally, the
 :meth:`~orchestrator.trainer.trainer_base.Trainer.submit_train` requires
-a :class:`~orchestrator.workflow.Workflow` object and a dictionary of
+a :class:`~orchestrator.scheduler.Scheduler` object and a dictionary of
 job settings (e.g. walltime, # of nodes).
 
 The hyperparameters that control the form of the potential or its descriptors

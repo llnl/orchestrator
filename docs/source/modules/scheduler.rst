@@ -1,16 +1,16 @@
-Workflow
-========
+Scheduler
+=========
 
 This module handles the submission and retrieval of simulations to either a
 local computer or HPC resources, managing the file structure of the simulations,
 and retains information on the location of job files.
 
 To see a list of currently implemented job schedulers, see the full API for the
-module at :ref:`workflow_module`. The abstract base class
-:class:`~orchestrator.workflow.workflow_base.Workflow` provides the standard
+module at :ref:`scheduler_module`. The abstract base class
+:class:`~orchestrator.scheduler.scheduler_base.Scheduler` provides the standard
 interface for all of the concrete implementations. We also provide an abstract
 base class for HPC schedulers:
-:class:`~orchestrator.workflow.workflow_base.HPCWorkflow`
+:class:`~orchestrator.scheduler.scheduler_base.HPCScheduler`
 
 The simplest implementation provides an interface with the local command line,
 but interface with job schedulers or other more sophisticated tools, such as
@@ -19,27 +19,27 @@ but interface with job schedulers or other more sophisticated tools, such as
 Use Cases
 ---------
 
-:class:`~orchestrator.workflow.local.LocalWF`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+:class:`~orchestrator.scheduler.local.LocalScheduler`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Implementation for running jobs locally on a personal computer or an interactive job session
-:class:`~orchestrator.workflow.local.LocalWF`.  Note that
-all of the modules define a default workflow which is used if a workflow is
+:class:`~orchestrator.scheduler.local.LocalScheduler`.  Note that
+all of the modules define a default scheduler which is used if a scheduler is
 needed but not supplied. This default is an instance of
-:class:`~orchestrator.workflow.local.LocalWF` with the root directory set to
+:class:`~orchestrator.scheduler.local.LocalScheduler` with the root directory set to
 the module's name.
 
-:class:`~orchestrator.workflow.slurm.SlurmWF`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+:class:`~orchestrator.scheduler.slurm.SlurmScheduler`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 A default script template for the slurm batch file is provided, but the user
 can define their own and provide it's path via the ``default_template``
-keyword in the ``workflow_args`` dictionary passed to the Workflow constructor.
+keyword in the ``scheduler_args`` dictionary passed to the Scheduler constructor.
 Also note that if synchronous (blocking) behavior is desired, this can be
 toggled with the ``synchronous`` keyword in the ``job_details`` dict provided
-to :meth:`~orchestrator.workflow.workflow_base.Workflow.submit_job`.
+to :meth:`~orchestrator.scheduler.scheduler_base.Scheduler.submit_job`.
 
-This workflow includes the option to submit to a Slurm machine that can be
+This scheduler includes the option to submit to a Slurm machine that can be
 accessed via SSH from the current machine. To use this functionality,
 ``remote_machine`` must be set at initialization.
 
@@ -66,39 +66,39 @@ In addition to these keywords (which should be set as lowercase, i.e.
 Lastly, the frequency of calls to squeue are set by ``wait_freq``, which has a
 default of 60 seconds.
 
-The workflow is designed to have flexibility for heterogenous use cases.
+The scheduler is designed to have flexibility for heterogenous use cases.
 To this end, default parameters can be set by the user when constructing the
-Workflow via the ``workflow_args`` dict, but many of these parameters can be
+Scheduler via the ``scheduler_args`` dict, but many of these parameters can be
 overridden for any specific job by providing them in the ``job_details`` dict
-of the :meth:`~orchestrator.workflow.workflow_base.Workflow.submit_job`
+of the :meth:`~orchestrator.scheduler.scheduler_base.Scheduler.submit_job`
 function.
 
-When using an asynchronous workflow, it is important to use a blocking function
+When using an asynchronous scheduler, it is important to use a blocking function
 to ensure necessary calculations are done before proceding. An example is
-:class:`~orchestrator.workflow.slurm.SlurmWF`'s
-:meth:`~orchestrator.workflow.slrum.SlurmWF.block_until_completed` method,
+:class:`~orchestrator.scheduler.slurm.SlurmScheduler`'s
+:meth:`~orchestrator.scheduler.slrum.SlurmScheduler.block_until_completed` method,
 which would be called right before the outcomes of any set of calculations
 are needed by subsequent functions or modules.
 
-:class:`~orchestrator.workflow.lsf.LSFWF`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+:class:`~orchestrator.scheduler.lsf.LSFScheduler`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-:class:`~orchestrator.workflow.lsf.LSFWF` is provided as a mirror to
-:class:`~orchestrator.workflow.slurm.SlurmWF` that enables the use of
+:class:`~orchestrator.scheduler.lsf.LSFScheduler` is provided as a mirror to
+:class:`~orchestrator.scheduler.slurm.SlurmScheduler` that enables the use of
 IBM's LSF scheduler. Much of the previous description applies to this
-scheduler as well. The differences will be highlighted below. This workflow
+scheduler as well. The differences will be highlighted below. This scheduler
 includes the option to submit to an LSF machine that can be accessed via SSH
 from the current machine. To use this functionality, ``remote_machine`` must be
 set at initialization. Additional paths for the LSF profile or submission
 executable may also need to be provided.
 
-:class:`~orchestrator.workflow.flux.FluxWF`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+:class:`~orchestrator.scheduler.flux.FluxScheduler`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-:class:`~orchestrator.workflow.flux.FluxWF` is provided as a mirror to
-:class:`~orchestrator.workflow.slurm.SlurmWF` that enables the use of
+:class:`~orchestrator.scheduler.flux.FluxScheduler` is provided as a mirror to
+:class:`~orchestrator.scheduler.slurm.SlurmScheduler` that enables the use of
 the flux scheduler. Much of the previous description applies to this
-scheduler as well. This workflow includes the option to submit to a flux
+scheduler as well. This scheduler includes the option to submit to a flux
 machine that can be accessed via SSH from the current machine. To use this
 functionality, ``remote_machine`` must be set at initialization. Another
 feature of flux is the ability to provision jobs within an existing
@@ -107,21 +107,21 @@ allocation. To change the command that is used to submit a job (default is
 (i.e. to ``run``) or overridden in ``job_details`` with the ``submit_command``
 key.
 
-:class:`~orchestrator.workflow.aiida.AiidaWF`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+:class:`~orchestrator.scheduler.aiida.AiidaScheduler`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-An interface for the AiiDA framework has been implemented as a Workflow for
+An interface for the AiiDA framework has been implemented as a Scheduler for
 the Orchestrator. This must be combined with any of the oracles found in
 :ref:`aiida_oracle` API documentation. As
-:class:`~orchestrator.workflow.aiida.AiidaWF` inherits from
-:class:`~orchestrator.workflow.workflow_base.HPCWorkflow`, all of the variables
+:class:`~orchestrator.scheduler.aiida.AiidaScheduler` inherits from
+:class:`~orchestrator.scheduler.scheduler_base.HPCScheduler`, all of the variables
 related to job submission are the same. These values can be seen at the
-:class:`~orchestrator.workflow.workflow_base.HPCWorkflow` API documentation.
+:class:`~orchestrator.scheduler.scheduler_base.HPCScheduler` API documentation.
 
 Restarting Jobs
 ---------------
 
-All workflow classes provide a :meth:`~.workflow_base.HPCWorkflow.restart_job`
+All scheduler classes provide a :meth:`~.scheduler_base.HPCScheduler.restart_job`
 method to restart a previously submitted job with the same or updated
 parameters. This is useful for continuing failed jobs, running additional
 timesteps, or modifying job parameters while preserving input files.
@@ -129,7 +129,7 @@ timesteps, or modifying job parameters while preserving input files.
 The restart process:
 
 1. Retrieves the original job details using the provided ``calc_id``
-2. Creates a new run directory following the standard workflow path structure
+2. Creates a new run directory following the standard scheduler path structure
 3. Copies input files from the original job directory to the new directory
 4. Automatically updates any file paths that reference the old directory
 5. Submits a new job with the original or updated parameters
@@ -145,13 +145,13 @@ Basic Usage
 .. code-block:: python
 
    # Restart a job with the same parameters
-   new_calc_id = wf.restart_job(calc_id=123)
+   new_calc_id = scheduler.restart_job(calc_id=123)
 
    # Restart with an updated command
-   new_calc_id = wf.restart_job(calc_id=123, command="lmp -in restart.in")
+   new_calc_id = scheduler.restart_job(calc_id=123, command="lmp -in restart.in")
 
    # Restart with updated job details (e.g., longer walltime)
-   new_calc_id = wf.restart_job(
+   new_calc_id = scheduler.restart_job(
        calc_id=123,
        job_details={"walltime": "24:00:00", "nodes": 4}
    )
@@ -162,14 +162,14 @@ Advanced Usage
 .. code-block:: python
 
    # Copy only specific files
-   new_calc_id = wf.restart_job(
+   new_calc_id = scheduler.restart_job(
        calc_id=123,
        copy_pattern="*.data",  # Only copy .data files
        exclude_pattern="temp_*"  # Exclude temporary files
    )
 
    # Copy multiple file types
-   new_calc_id = wf.restart_job(
+   new_calc_id = scheduler.restart_job(
        calc_id=123,
        copy_pattern=["*.in", "*.data", "*.restart"],
        exclude_pattern=["*.dump", "backup_*"]
@@ -188,26 +188,26 @@ Notes on ``restart_job``
 Remote SSH Capabilities
 -----------------------
 
-All HPC workflow classes (:class:`~orchestrator.workflow.slurm.SlurmWF`,
-:class:`~orchestrator.workflow.lsf.LSFWF`,
-and :class:`~orchestrator.workflow.flux.FluxWF`) support submitting jobs to
+All HPC scheduler classes (:class:`~orchestrator.scheduler.slurm.SlurmScheduler`,
+:class:`~orchestrator.scheduler.lsf.LSFScheduler`,
+and :class:`~orchestrator.scheduler.flux.FluxScheduler`) support submitting jobs to
 remote machines via SSH using the common ``remote_machine`` parameter defined
-in the :class:`~orchestrator.workflow.workflow_base.HPCWorkflow` parent class:
+in the :class:`~orchestrator.scheduler.scheduler_base.HPCScheduler` parent class:
 
 .. code-block:: python
 
-   # Example using SlurmWF with a remote machine
-   wf = SlurmWF(remote_machine="cluster.example.com", queue="batch", account="myaccount")
+   # Example using SlurmScheduler with a remote machine
+   scheduler = SlurmScheduler(remote_machine="cluster.example.com", queue="batch", account="myaccount")
 
-   # Example using LSFWF with a remote machine
-   wf = LSFWF(remote_machine="lsf-cluster.example.com", queue="batch", account="myaccount")
+   # Example using LSFScheduler with a remote machine
+   scheduler = LSFScheduler(remote_machine="lsf-cluster.example.com", queue="batch", account="myaccount")
 
-   # Example using FluxWF with a remote machine
-   wf = FluxWF(remote_machine="flux-cluster.example.com", queue="batch", account="myaccount")
+   # Example using FluxScheduler with a remote machine
+   scheduler = FluxScheduler(remote_machine="flux-cluster.example.com", queue="batch", account="myaccount")
 
-When the ``remote_machine`` parameter is provided, the workflows will
+When the ``remote_machine`` parameter is provided, the schedulers will
 automatically handle SSH connections to the remote machine for job submission
-and status checks. Note that the selected workflow type should match the
+and status checks. Note that the selected scheduler type should match the
 scheduler on the remote_machine, which may or may not be different than the
 scheduler system on which Orchestrator is being executed.
 
@@ -231,10 +231,10 @@ Inheritance Graph
 -----------------
 
 .. inheritance-diagram::
-   orchestrator.workflow.aiida
-   orchestrator.workflow.factory
-   orchestrator.workflow.flux
-   orchestrator.workflow.local
-   orchestrator.workflow.lsf
-   orchestrator.workflow.slurm
+   orchestrator.scheduler.aiida
+   orchestrator.scheduler.factory
+   orchestrator.scheduler.flux
+   orchestrator.scheduler.local
+   orchestrator.scheduler.lsf
+   orchestrator.scheduler.slurm
    :parts: 3

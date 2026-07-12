@@ -6,7 +6,7 @@ calculate a property of interest such as the melting point or elastic constant
 of a materials. This module can utilize other modules within the orchestrator
 to carry out the target property calculations. For example, the
 :ref:`target_property_module` can be used to perform melting point
-calculations by utilizing :ref:`simulator_module` and :ref:`workflow_module`
+calculations by utilizing :ref:`simulator_module` and :ref:`scheduler_module`
 modules.
 
 The abstract base class :class:`~.TargetProperty` provides the standard
@@ -21,15 +21,15 @@ Basic usage
 ^^^^^^^^^^^
 A simple example of how to use the target property class in a standalone application
 for melting point calculations can be seen below. The target property class uses
-functionalities from several other modules such as Simulator, Workflow and Storage.
-The example uses the LAMMPS simulator, local storage and local workflow. The user should
+functionalities from several other modules such as Simulator, Scheduler and Storage.
+The example uses the LAMMPS simulator, local storage and local scheduler. The user should
 modify .json file located in the test_inputs folder according to needs of a specific
 calculation.::
 
     from target_property import target_property_builder
     from storage import storage_builder
     from simulator import simulator_builder
-    from workflow import workflow_builder
+    from scheduler import scheduler_builder
 
     # Choose MeltingPoint for target property type.
     # Target property args are read from the input json file.
@@ -39,20 +39,20 @@ calculation.::
     # Build local storage. The database path and name are not shown here
     built_storage = storage_builder.build(storage_type='LOCAL')
 
-    # Build local workflow.
-    # Workflow root and workflow args are not shown here and read from json file.
-    built_workflow = workflow_builder.build(workflow_type='LOCAL')
+    # Build local scheduler.
+    # Scheduler root and scheduler args are not shown here and read from json file.
+    built_scheduler = scheduler_builder.build(scheduler_type='LOCAL')
 
     # To estimate melting temperature using a single calculation
     results_dict = built_target_property.calculate_property(
-        workflow=built_workflow, storage=built_storage)
+        scheduler=built_scheduler, storage=built_storage)
     value = results_dict['property_value']
     value_std = results_dict['property_std']
     value_calc_ids = results_dict['calc_ids']
 
     # To estimate melting temperature using multiple calculations with a standard deviation
     results_dict = built_target_property.calculate_with_error(
-        n_calc=4, workflow=built_workflow)
+        n_calc=4, scheduler=built_scheduler)
     avg_value = results_dict['property_value']
     value_std = results_dict['property_std']
     value_calc_ids = results_dict['calc_ids']

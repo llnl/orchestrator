@@ -1,7 +1,7 @@
 Restart
 =======
 
-Considering that usage of the Orchestrator may include long-walltime jobs or multistep workflows, it is useful to have the ability to restart the Orchestrator in some specific state beyond basic initialization. To this end, we have created restart functionality that is flexible and extensible, defined on a per-module basis. Generally speaking, one simply needs to import the
+Considering that usage of the Orchestrator may include long-walltime jobs or multistep pipelines, it is useful to have the ability to restart the Orchestrator in some specific state beyond basic initialization. To this end, we have created restart functionality that is flexible and extensible, defined on a per-module basis. Generally speaking, one simply needs to import the
 :class:`~orchestrator.utils.restart.restarter` instance to leverage the
 :meth:`~orchestrator.utils.restart.Restart.write_checkpoint_file` and
 :meth:`~orchestrator.utils.restart.Restart.read_checkpoint_file` methods which
@@ -24,8 +24,8 @@ Checkpoint File Structure
 -------------------------
 
 While modules are free to define their own auxiliary files to assist in the
-restart process (see Workflows
-:meth:`~orchestrator.workflow.workflow_base.Workflow.save_job_dict` as an
+restart process (see Schedulers
+:meth:`~.scheduler_base.Scheduler.save_job_dict` as an
 example), the bulk of the information will be saved in a shared json file. This
 file is organized in a hierarchical fashion - at the highest level it is split
 up into sections which correspond to each module instance. Each of these
@@ -87,7 +87,7 @@ uses a default of "potential". This value can be changed by specifying a
     If your application uses multiple instances of a given module type, you
     should change at least one of their ``checkpoint_name``\ s, otherwise they
     will overwrite each other's checkpoint information. Due to the common usage
-    of multiple different :class:`~.Workflow` modules for complex Orchestrator
+    of multiple different :class:`~.Scheduler` modules for complex Orchestrator
     operations, this module sets the ``checkpoint_name`` to the specific class
     name be default to avoid common collisions. If using multiple instances of
     the same class, the ``checkpoint_name`` should be manually overridden for
@@ -106,7 +106,7 @@ Write
 
 More discretion can be used regarding when a module should write to the
 ``checkpoint_file``. In the case of the
-:class:`~orchestrator.workflow.workflow_base.Workflow` classes, the checkpoint
+:class:`~.scheduler_base.Scheduler` classes, the checkpoint
 file is updated any time a JobStatus is updated. On the other hand,
 the :class:`~orchestrator.potential.potential_base.Potential` module never
 calls its own

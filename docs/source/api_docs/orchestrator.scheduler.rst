@@ -1,17 +1,17 @@
-.. _workflow_module:
+.. _scheduler_module:
 
-Workflow Module
+Scheduler Module
 ================
 
 Abstract Base Classes
 ---------------------
 
-.. autoclass:: orchestrator.workflow.workflow_base.Workflow
+.. autoclass:: orchestrator.scheduler.scheduler_base.Scheduler
    :members:
    :undoc-members:
    :show-inheritance:
 
-.. autoclass:: orchestrator.workflow.workflow_base.HPCWorkflow
+.. autoclass:: orchestrator.scheduler.scheduler_base.HPCScheduler
    :members:
    :undoc-members:
    :show-inheritance:
@@ -22,7 +22,7 @@ Concrete Implementations
 Local
 ^^^^^
 
-.. automodule:: orchestrator.workflow.local
+.. automodule:: orchestrator.scheduler.local
    :members:
    :undoc-members:
    :show-inheritance:
@@ -30,7 +30,7 @@ Local
 Slurm (sbatch)
 ^^^^^^^^^^^^^^
 
-.. autoclass:: orchestrator.workflow.slurm.SlurmWF
+.. autoclass:: orchestrator.scheduler.slurm.SlurmScheduler
    :members:
    :undoc-members:
    :show-inheritance:
@@ -38,7 +38,7 @@ Slurm (sbatch)
 LSF (bsub)
 ^^^^^^^^^^
 
-.. autoclass:: orchestrator.workflow.lsf.LSFWF
+.. autoclass:: orchestrator.scheduler.lsf.LSFScheduler
    :members:
    :undoc-members:
    :show-inheritance:
@@ -46,7 +46,7 @@ LSF (bsub)
 Flux (flux batch)
 ^^^^^^^^^^^^^^^^^
 
-.. autoclass:: orchestrator.workflow.flux.FluxWF
+.. autoclass:: orchestrator.scheduler.flux.FluxScheduler
    :members:
    :undoc-members:
    :show-inheritance:
@@ -54,15 +54,15 @@ Flux (flux batch)
 AiiDA
 ^^^^^
 
-.. autoclass:: orchestrator.workflow.aiida.AiidaWF
+.. autoclass:: orchestrator.scheduler.aiida.AiidaScheduler
    :members:
    :undoc-members:
    :show-inheritance:
 
-Workflow Builder
-----------------
+Scheduler Builder
+-----------------
 
-.. automodule:: orchestrator.workflow.factory
+.. automodule:: orchestrator.scheduler.factory
    :members:
    :undoc-members:
    :show-inheritance:
@@ -70,7 +70,7 @@ Workflow Builder
 Job Status
 ==========
 
-.. autoclass:: orchestrator.workflow.workflow_base.JobStatus
+.. autoclass:: orchestrator.scheduler.scheduler_base.JobStatus
    :members:
    :undoc-members:
    :show-inheritance:

@@ -39,9 +39,9 @@ Inheritance Graph
    orchestrator.computer.score.factory
    orchestrator.oracle.factory
    orchestrator.potential.factory
+   orchestrator.scheduler.factory
    orchestrator.simulator.factory
    orchestrator.storage.factory
    orchestrator.target_property.factory
    orchestrator.trainer.factory
-   orchestrator.workflow.factory
    :parts: 3

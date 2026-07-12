@@ -18,13 +18,13 @@ four possible execution modes:
    * **in-memory, multiple input**: by implementing ``compute_batch()``, a sub-class may
       additionally support batched evaluation.
 
-   * **workflow, single input**: if ``compute()`` is already implemented, then
+   * **scheduler, single input**: if ``compute()`` is already implemented, then
       implementing ``get_run_command()`` will allow for execution of ``compute()`` across
-      a (possibly distributed) workflow .
+      a (possibly distributed) scheduler .
 
-   * **workflow, multiple input**: ``get_batched_run_command()`` may be a modified
+   * **scheduler, multiple input**: ``get_batched_run_command()`` may be a modified
       version of ``get_run_command()`` which leverages ``compute_batch()`` for batched
-      workflow execution.
+      scheduler execution.
 
 See the full API for the module at :ref:`computer_module`.
 

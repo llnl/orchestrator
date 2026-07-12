@@ -457,7 +457,7 @@ Below is a script to test the QE plugin by running a single-point energy calcula
    # Import necessary AiiDA modules
    from aiida.engine import submit
    from aiida.orm import load_code, load_group, Dict, StructureData
-   from aiida.plugins import DataFactory, WorkflowFactory
+   from aiida.plugins import DataFactory, SchedulerFactory
    from ase.build import bulk
 
    # Load the QE code (replace 'my_qe@my_computer' with your configured code label)
@@ -508,7 +508,7 @@ Below is a script to test the VASP plugin by running a single-point energy calcu
 
    from aiida import load_profile
    from aiida.orm import load_code, load_group, Str, Group, Int
-   from aiida.plugins import DataFactory, WorkflowFactory
+   from aiida.plugins import DataFactory, SchedulerFactory
    from aiida.common.extendeddicts import AttributeDict
    from ase.io import read
    from ase.build import bulk, sort
@@ -519,7 +519,7 @@ Below is a script to test the VASP plugin by running a single-point energy calcu
    load_profile()
 
    # Initiate workchain and other inputs
-   workchain = WorkflowFactory('vasp.relax')
+   workchain = SchedulerFactory('vasp.relax')
    inputs = AttributeDict()
    vasp = AttributeDict()
    inputs.vasp = vasp

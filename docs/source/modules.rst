@@ -12,7 +12,7 @@ This module supports the usage of Orchestrator in an "application" mode.
 Coordinating Modules
 --------------------
 
-These modules coordinate the usage of one or more atomic modules for both simple and complex objectives.
+These modules coordinate the usage of one or more functional modules for both simple and complex objectives.
 
 .. toctree::
    :maxdepth: 1
@@ -20,10 +20,10 @@ These modules coordinate the usage of one or more atomic modules for both simple
    modules/augmentor
    modules/target_property
 
-Atomic Modules
---------------
+Functional Modules
+------------------
 
-These modules are considered "atomic" in that they serve single functionalities and can be considered the building blocks for the rest of the Orchestrator framework.
+These modules are considered "functional" in that they serve single functionalities and can be considered the building blocks for the rest of the Orchestrator framework.
 
 .. toctree::
    :maxdepth: 1
@@ -44,7 +44,7 @@ These modules coordinate key backend functionality.
 .. toctree::
    :maxdepth: 1
 
-   modules/workflow
+   modules/scheduler
    modules/storage
    modules/restart
    modules/factory
@@ -74,6 +74,12 @@ Orchestrator Inheritance Graph
    orchestrator.potential.factory
    orchestrator.potential.fitsnap
    orchestrator.potential.kim
+   orchestrator.scheduler.aiida
+   orchestrator.scheduler.factory
+   orchestrator.scheduler.flux
+   orchestrator.scheduler.local
+   orchestrator.scheduler.lsf
+   orchestrator.scheduler.slurm
    orchestrator.simulator.factory
    orchestrator.simulator.lammps
    orchestrator.storage.colabfit
@@ -91,10 +97,4 @@ Orchestrator Inheritance Graph
    orchestrator.utils.module_factory
    orchestrator.utils.restart
    orchestrator.utils.templates
-   orchestrator.workflow.aiida
-   orchestrator.workflow.factory
-   orchestrator.workflow.flux
-   orchestrator.workflow.local
-   orchestrator.workflow.lsf
-   orchestrator.workflow.slurm
    :parts: 3
