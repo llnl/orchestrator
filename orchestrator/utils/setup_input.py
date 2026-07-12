@@ -15,7 +15,7 @@ supported_modules = [
     'storage',
     'target_property',
     'trainer',
-    'workflow',
+    'scheduler',
 ]
 
 # rudimentary for now, but can be expanded in the future
@@ -30,7 +30,7 @@ required_args_dict = {
     'storage': ['storage_type', 'storage_args'],
     'target_property': ['target_property_type'],
     'trainer': ['trainer_type', 'trainer_args'],
-    'workflow': ['workflow_type', 'workflow_args'],
+    'scheduler': ['scheduler_type', 'scheduler_args'],
 }
 
 
@@ -57,14 +57,14 @@ def setup_orch_modules(jsondict: dict) -> list:
     :class:`~.Augmentor`, :class:`~.DescriptorBase`, :class:`~.Oracle` and
     :class:`~.AiidaOracle`, :class:`~.Potential`, :class:`~.ScoreBase`,
     :class:`~.Simulator`, :class:`~.Storage`, :class:`~.TargetProperty`,
-    :class:`~.Trainer`, and :class:`~.Workflow` modules.
+    :class:`~.Trainer`, and :class:`~.Scheduler` modules.
 
     :param jsonfile: Input arguments parsed by :meth:`read_input` from the
         JSON file.
     :type jsonfile: dict
     :returns: tuple of modules, set to ``None`` if not in input and a dict of
         like-modules if multiple sections are present in the input, i.e.
-        'workflow1', 'workflow2', 'default_workflow', ...
+        'scheduler1', 'scheduler2', 'default_scheduler', ...
     :rtype: list of modules in order of `supported modules`
     """
     return_list = []
@@ -195,7 +195,7 @@ def _get_module_builders(module_name: str) -> Union[dict, ModuleBuilder]:
         'storage': ('..storage', 'storage_builder'),
         'target_property': ('..target_property', 'target_property_builder'),
         'trainer': ('..trainer', 'trainer_builder'),
-        'workflow': ('..workflow', 'workflow_builder'),
+        'scheduler': ('..scheduler', 'scheduler_builder'),
     }
 
     match module_name:
