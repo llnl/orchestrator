@@ -12,7 +12,7 @@ from ...utils.data_standard import (
 from typing import Optional, Union, Dict, Any, List
 import numpy as np
 from ...potential.potential_base import Potential
-from ...workflow.workflow_base import Workflow
+from ...scheduler.scheduler_base import Scheduler
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:  # avoid circular imports
@@ -59,7 +59,7 @@ class KLIFFTrainer(Trainer):
         **kwargs,
     ):
         """
-        set variables and initialize the recorder and default workflow
+        set variables and initialize the recorder and default scheduler
 
         :param training_split: Fraction of the dataset to be allocated for
             training (e.g., 0.8 for 80%). Defaults to 0.8.
@@ -139,7 +139,7 @@ class KLIFFTrainer(Trainer):
         potential_name: str = 'kim_potential',
         loss: Optional[Loss] = None,
         create_path: bool = True,
-        workflow: Optional[Workflow] = None,
+        scheduler: Optional[Scheduler] = None,
     ) -> str:
         """
         Deploy a KIM model. Writes KIM potential to Current Working Directory
@@ -148,7 +148,7 @@ class KLIFFTrainer(Trainer):
         infrastructure. Written pkl files can be directly loaded, while the
         installed version of the potential can be run using KIM libraries.
 
-        :param path_type: specifier for the workflow path, to differentiate
+        :param path_type: specifier for the scheduler path, to differentiate
                           training runs and where the model will be saved
         :type path_type: str
         :param potential: potential to be saved; one of
@@ -165,17 +165,17 @@ class KLIFFTrainer(Trainer):
                             path_type should be used as the full path
                             |default| ``True``
         :type create_path: boolean
-        :param workflow: the workflow for managing path definition, if none are
-                        supplied, will use the default workflow defined in this
-                        class |default| ``None``
-        :type workflow: Workflow
+        :param scheduler: the scheduler for managing path definition, if none
+                          are supplied, will use the default scheduler defined
+                          in this class |default| ``None``
+        :type scheduler: Scheduler
         :returns: path where the model is saved (inclusive)
         :rtype: str
         """
-        if workflow is None:
-            workflow = self.default_wf
+        if scheduler is None:
+            scheduler = self.default_scheduler
         if create_path:
-            save_path = workflow.make_path(self.__class__.__name__, path_type)
+            save_path = scheduler.make_path(self.__class__.__name__, path_type)
         else:
             save_path = path_type
 
@@ -231,7 +231,7 @@ class KLIFFTrainer(Trainer):
         potential: Potential,
         storage: "Storage",
         dataset_list: list,
-        workflow: Optional[Workflow] = None,
+        scheduler: Optional[Scheduler] = None,
         eweight: float = 1.0,
         fweight: float = 1.0,
         vweight: float = 1.0,
@@ -244,7 +244,7 @@ class KLIFFTrainer(Trainer):
         KLIFFTrainer should not be used for training, it is a parent class to
         specific implementations
 
-        :param path_type: specifier for the workflow path, to differentiate
+        :param path_type: specifier for the scheduler path, to differentiate
                           training runs
         :type path_type: str
         :param potential: potential to be trained. The actual model itself is
@@ -255,11 +255,11 @@ class KLIFFTrainer(Trainer):
         :dataset_list: the list of dataset_handles (e.g. collabfit-IDs)
             within the storage object to use as the dataset.
         :type dataset_list: list
-        :param workflow: the workflow for managing path definition and job
+        :param scheduler: the scheduler for managing path definition and job
                          submission, if none are supplied, will use the
-                         default workflow defined in this class |default|
+                         default scheduler defined in this class |default|
                          ``None``
-        :type workflow: Workflow
+        :type scheduler: Scheduler
         :param eweight: weight of energy data in the loss function
         :type eweight: float
         :param fweight: weight of the force data in the loss function
@@ -284,7 +284,7 @@ class KLIFFTrainer(Trainer):
         storage_args: dict,
         storage: "Storage",
         dataset_list: list,
-        workflow: Optional[Workflow] = None,
+        scheduler: Optional[Scheduler] = None,
         eweight: float = 1.0,
         fweight: float = 1.0,
         vweight: float = 1.0,
@@ -299,7 +299,7 @@ class KLIFFTrainer(Trainer):
         minimizing a loss function. While :meth:`train` works synchronously,
         this method submits training to a job scheduler.
 
-        :param path_type: specifier for the workflow path, to differentiate
+        :param path_type: specifier for the scheduler path, to differentiate
                          training runs
         :type path_type: str
         :param potential: potential to be trained. The actual model itself is
@@ -310,11 +310,11 @@ class KLIFFTrainer(Trainer):
         :dataset_list: the list of dataset_handles (e.g. collabfit-IDs)
             within the storage object to use as the dataset.
         :type dataset_list: list
-        :param workflow: the workflow for managing path definition and job
+        :param scheduler: the scheduler for managing path definition and job
                          submission, if none are supplied, will use the
-                         default workflow defined in this class
+                         default scheduler defined in this class
                          |default| ``None``
-        :type workflow: Workflow
+        :type scheduler: Scheduler
         :param eweight: weight of energy data in the loss function
         :type eweight: float
         :param fweight: weight of the force data in the loss function

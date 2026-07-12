@@ -3,7 +3,7 @@ import numpy as np
 from typing import Optional, Union
 from ..storage.storage_base import Storage
 from ..potential.potential_base import Potential
-from ..workflow.workflow_base import Workflow
+from ..scheduler.scheduler_base import Scheduler
 from ase import Atoms
 from kliff.dataset.dataset import DatasetError  # temporary
 from .trainer_base import Trainer
@@ -193,7 +193,7 @@ class FitSnapTrainer(Trainer):
         Write a script to run the trainer outside of memory
 
         This is a helper function for generating a script, training_script.py,
-        which can be executed via a workflow or offline. It additionally saves
+        which can be executed via a scheduler or offline. It additionally saves
         needed additional files with it, such as a weights.txt data file.
 
         :param save_path: path where the training script will be written
@@ -278,7 +278,7 @@ class FitSnapTrainer(Trainer):
         else:
             raise TypeError('per_atom_weights not a supported type!')
 
-        # Currently uses the workflow from trainer, not submit_train's input
+        # Currently uses the scheduler from trainer, not submit_train's input
         construct_and_train = (
             f'snap, errors = trainer.train(path_type="{full_save_path}",'
             f'potential=potential,'
@@ -315,7 +315,7 @@ class FitSnapTrainer(Trainer):
         potential: Potential,
         storage: Storage,
         dataset_list: list,
-        workflow: Optional[Workflow] = None,
+        scheduler: Optional[Scheduler] = None,
         eweight: float = 1.0,
         fweight: float = 1.0,
         vweight: float = 1.0,
@@ -330,7 +330,7 @@ class FitSnapTrainer(Trainer):
         supplied in the FitSnap settings file to perform the potential training
 
         :param path_type: if write_training_script=True, specifier for the
-            workflow path, to differentiate training runs; else, the raw
+            scheduler path, to differentiate training runs; else, the raw
             path to save files
         :type path_type: str
         :param potential: :class:`~orchestrator.potential.fitsnap.
@@ -341,10 +341,10 @@ class FitSnapTrainer(Trainer):
         :dataset_list: the list of dataset_handles (e.g. collabfit-IDs)
             within the storage object to use as the dataset.
         :type dataset_list: list
-        :param workflow: the workflow for managing path definition and job
-            submission, if none are supplied, will use the default workflow
+        :param scheduler: the scheduler for managing path definition and job
+            submission, if none are supplied, will use the default scheduler
             defined in this class |default| ``None``
-        :type workflow: Workflow
+        :type scheduler: Scheduler
         :param eweight: weight of energy data in the loss function
         :type eweight: float
         :param fweight: weight of the force data in the loss function
@@ -356,9 +356,9 @@ class FitSnapTrainer(Trainer):
             |default| ``False``
         :type per_atom_weights: either boolean or np.ndarray
         :param write_training_script: True to write a training script in the
-            workflow created directory |default| ``True``;
+            scheduler created directory |default| ``True``;
             This is expected to always be left on if not being called by a
-            submit_train() workflow!
+            submit_train() scheduler!
         :type write_training_script: bool
         :param upload_to_kimkit: True to upload to kimkit repository
         :type upload_to_kimkit: bool
@@ -460,9 +460,9 @@ class FitSnapTrainer(Trainer):
         # called from a training_script
         if write_training_script:
             # for normal training we need to make a path to save to
-            if workflow is None:
-                workflow = self.default_wf
-            save_path = workflow.make_path(self.__class__.__name__, path_type)
+            if scheduler is None:
+                scheduler = self.default_scheduler
+            save_path = scheduler.make_path(self.__class__.__name__, path_type)
 
             # Output the weights into a datafile if needed
             # If True/False, can just assume storage holding weights is enough
@@ -502,7 +502,7 @@ class FitSnapTrainer(Trainer):
             potential_name='fitsnap_potential',
             loss=snap.solver.errors,
             create_path=False,
-            workflow=workflow,
+            scheduler=scheduler,
         )
 
         # TODO: allow specifying auxiliary files to attach to upload?
@@ -523,7 +523,7 @@ class FitSnapTrainer(Trainer):
         potential: Potential,
         storage: Storage,
         dataset_list: list,
-        workflow: Workflow,
+        scheduler: Scheduler,
         job_details: dict,
         eweight: float = 1.0,
         fweight: float = 1.0,
@@ -539,7 +539,7 @@ class FitSnapTrainer(Trainer):
         minimizing a loss function. While :meth:`train` works synchronously,
         this method submits training to a job scheduler.
 
-        :param path_type: specifier for the workflow path, to differentiate
+        :param path_type: specifier for the scheduler path, to differentiate
             training runs
         :type path_type: str
         :param potential: potential to be trained. The actual model itself is
@@ -550,10 +550,10 @@ class FitSnapTrainer(Trainer):
         :dataset_list: the list of dataset_handles (e.g. collabfit-IDs)
             within the storage object to use as the dataset.
         :type dataset_list: list
-        :param workflow: the workflow for managing path definition and job
-            submission, if none are supplied, will use the default workflow
+        :param scheduler: the scheduler for managing path definition and job
+            submission, if none are supplied, will use the default scheduler
             defined in this class
-        :type workflow: Workflow
+        :type scheduler: Scheduler
         :param job_details: job parameters such as walltime or # of nodes
         :type job_details: dict
         :param eweight: weight of energy data in the loss function
@@ -581,7 +581,8 @@ class FitSnapTrainer(Trainer):
 
         if not isinstance(dataset_list, list):
             dataset_list = [dataset_list]
-        save_path = workflow.make_path(self.__class__.__name__, f'{path_type}')
+        save_path = scheduler.make_path(self.__class__.__name__,
+                                        f'{path_type}')
         script_filename = self._write_training_script(
             save_path,
             dataset_list,
@@ -593,7 +594,7 @@ class FitSnapTrainer(Trainer):
             per_atom_weights=per_atom_weights,
             upload_to_kimkit=upload_to_kimkit)
         job_details['custom_preamble'] = 'python'
-        calc_id = workflow.submit_job(
+        calc_id = scheduler.submit_job(
             script_filename,
             save_path,
             job_details=job_details,
@@ -607,7 +608,7 @@ class FitSnapTrainer(Trainer):
         potential_name: str = 'fitsnap_potential',
         loss: Optional[None] = None,
         create_path: bool = True,
-        workflow: Optional[Workflow] = None,
+        scheduler: Optional[Scheduler] = None,
     ) -> str:
         """
         Output FitSnap model files. Write error metric and LAMMPS input files
@@ -619,7 +620,7 @@ class FitSnapTrainer(Trainer):
         is already set, copies the files to the new location and updates
         the potential.parameter_path.
 
-        :param path_type: specifier for the workflow path, to differentiate
+        :param path_type: specifier for the scheduler path, to differentiate
             training runs and where the model will be saved
         :type path_type: str
         :param potential: potential to be saved
@@ -633,17 +634,17 @@ class FitSnapTrainer(Trainer):
         :param create_path: if the function needs to create a new path, or if
             path_type should be used as the full path |default| ``True``
         :type create_path: boolean
-        :param workflow: the workflow for managing path definition, if none are
-            supplied, will use the default workflow defined in this class
+        :param scheduler: the scheduler for managing path definition, if none
+            are supplied, will use the default scheduler defined in this class
             |default| ``None``
-        :type workflow: Workflow
+        :type scheduler: Scheduler
         :returns: path where the model is saved (inclusive)
         :rtype: str
         """
-        if workflow is None:
-            workflow = self.default_wf
+        if scheduler is None:
+            scheduler = self.default_scheduler
         if create_path:
-            save_path = workflow.make_path(self.__class__.__name__, path_type)
+            save_path = scheduler.make_path(self.__class__.__name__, path_type)
         else:
             save_path = path_type
 
@@ -702,7 +703,7 @@ class FitSnapTrainer(Trainer):
         self,
         calc_id: int,
         potential: Potential,
-        workflow: Workflow,
+        scheduler: Scheduler,
     ):
         """
         reload a potential that was trained via a submitted job
@@ -713,17 +714,17 @@ class FitSnapTrainer(Trainer):
             class object that will be updated with the model saved to disk
             after the training job.
         :type potential: KliffBPPotential
-        :param workflow: the workflow for managing path definition and job
-            submission, if none are supplied, will use the default workflow
+        :param scheduler: the scheduler for managing path definition and job
+            submission, if none are supplied, will use the default scheduler
             defined in this class |default| ``None``
-        :type workflow: Workflow
+        :type scheduler: Scheduler
         """
-        workflow.block_until_completed(calc_id)
+        scheduler.block_until_completed(calc_id)
 
         if potential.name is not None:
             potential_name = potential.name
         else:
             potential_name = "fitsnap_potential"
-        parameter_path = workflow.get_job_path(calc_id) + '/' + potential_name
+        parameter_path = scheduler.get_job_path(calc_id) + '/' + potential_name
         potential.parameter_path = parameter_path
         self.logger.info(f'Loading potential from: {parameter_path}')

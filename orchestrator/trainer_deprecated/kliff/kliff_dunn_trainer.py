@@ -6,7 +6,7 @@ from copy import deepcopy
 from typing import Optional, Union
 import numpy as np
 from ...potential.potential_base import Potential
-from ...workflow.workflow_base import Workflow
+from ...scheduler.scheduler_base import Scheduler
 from .kliff import KLIFFTrainer
 from ...utils.data_standard import FORCES_KEY, ENERGY_KEY
 
@@ -151,7 +151,7 @@ class DUNNTrainer(KLIFFTrainer):
         potential: Potential,
         storage: "Storage",
         dataset_list: list,
-        workflow: Optional[Workflow] = None,
+        scheduler: Optional[Scheduler] = None,
         eweight: float = 1.0,
         fweight: float = 1.0,
         vweight: float = 1.0,
@@ -165,7 +165,7 @@ class DUNNTrainer(KLIFFTrainer):
         supplied at instantiation to perform the potential training by
         minimizing a loss function.
 
-        :param path_type: specifier for the workflow path, to differentiate
+        :param path_type: specifier for the scheduler path, to differentiate
                           training runs
         :type path_type: str
         :param potential: :class:`~orchestrator.potential.dnn.KliffBPPotential`
@@ -177,11 +177,11 @@ class DUNNTrainer(KLIFFTrainer):
         :dataset_list: the list of dataset_handles (e.g. collabfit-IDs)
             within the storage object to use as the dataset.
         :type dataset_list: list
-        :param workflow: the workflow for managing path definition and job
+        :param scheduler: the scheduler for managing path definition and job
                          submission, if none are supplied, will use the
-                         default workflow defined in this class
+                         default scheduler defined in this class
                          |default| ``None``
-        :type workflow: Workflow
+        :type scheduler: Scheduler
         :param eweight: weight of energy data in the loss function
         :type eweight: float
         :param fweight: weight of the force data in the loss function
@@ -204,8 +204,8 @@ class DUNNTrainer(KLIFFTrainer):
 
         if not isinstance(dataset_list, list):
             dataset_list = [dataset_list]
-        if workflow is None:
-            workflow = self.default_wf
+        if scheduler is None:
+            scheduler = self.default_scheduler
 
         combined_dataset = []
         for dataset_handle in dataset_list:
@@ -222,7 +222,7 @@ class DUNNTrainer(KLIFFTrainer):
         # Create loss_path for logging if enabled
         loss_path = None
         if self.log_per_atom_pred:
-            loss_path = workflow.make_path(
+            loss_path = scheduler.make_path(
                 self.__class__.__name__,
                 f'{path_type}_loss',
             )
@@ -265,7 +265,7 @@ class DUNNTrainer(KLIFFTrainer):
         write a script to run the trainer outside of memory
 
         this is a helper function for generating a script, training_script.py,
-        which can be executed via a workflow or offline
+        which can be executed via a scheduler or offline
 
         :param save_path: path where the training script will be written
         :type save_path: str
@@ -398,7 +398,7 @@ class DUNNTrainer(KLIFFTrainer):
         potential: Potential,
         storage: "Storage",
         dataset_list: list,
-        workflow: Workflow,
+        scheduler: Scheduler,
         job_details: dict,
         eweight: float = 1.0,
         fweight: float = 1.0,
@@ -414,7 +414,7 @@ class DUNNTrainer(KLIFFTrainer):
         minimizing a loss function. While :meth:`train` works synchronously,
         this method submits training to a job scheduler.
 
-        :param path_type: specifier for the workflow path, to differentiate
+        :param path_type: specifier for the scheduler path, to differentiate
                           training runs
         :type path_type: str
         :param potential: potential to be trained. The actual model itself is
@@ -425,10 +425,10 @@ class DUNNTrainer(KLIFFTrainer):
         :dataset_list: the list of dataset_handles (e.g. collabfit-IDs)
             within the storage object to use as the dataset.
         :type dataset_list: list
-        :param workflow: the workflow for managing path definition and job
+        :param scheduler: the scheduler for managing path definition and job
                          submission, if none are supplied, will use the
-                         default workflow defined in this class
-        :type workflow: Workflow
+                         default scheduler defined in this class
+        :type scheduler: Scheduler
         :param eweight: weight of energy data in the loss function
         :type eweight: float
         :param fweight: weight of the force data in the loss function
@@ -451,13 +451,14 @@ class DUNNTrainer(KLIFFTrainer):
 
         if not isinstance(dataset_list, list):
             dataset_list = [dataset_list]
-        save_path = workflow.make_path(self.__class__.__name__, f'{path_type}')
+        save_path = scheduler.make_path(self.__class__.__name__,
+                                        f'{path_type}')
 
         # Only create loss_path if logging is enabled
         loss_path = None
         if self.log_per_atom_pred:
-            loss_path = workflow.make_path(self.__class__.__name__,
-                                           f'{path_type}_loss')
+            loss_path = scheduler.make_path(self.__class__.__name__,
+                                            f'{path_type}_loss')
             loss_path = path.abspath(loss_path)
 
         script = self._write_training_script(
@@ -471,7 +472,7 @@ class DUNNTrainer(KLIFFTrainer):
         potential._write_potential_to_file(
             f'{save_path}/potential_to_train.pkl')
         job_details['custom_preamble'] = 'python'
-        calc_id = workflow.submit_job(
+        calc_id = scheduler.submit_job(
             script,
             save_path,
             job_details=job_details,
@@ -482,7 +483,7 @@ class DUNNTrainer(KLIFFTrainer):
         self,
         calc_id: int,
         potential: Potential,
-        workflow: Workflow,
+        scheduler: Scheduler,
     ):
         """
         reload a potential that was trained via a submitted job
@@ -493,13 +494,13 @@ class DUNNTrainer(KLIFFTrainer):
                           class object that will be updated with the model
                           saved to disk after the training job.
         :type potential: KliffBPPotential
-        :param workflow: the workflow for managing path definition and job
+        :param scheduler: the scheduler for managing path definition and job
                          submission, if none are supplied, will use the
-                         default workflow defined in this class
+                         default scheduler defined in this class
                          |default| ``None``
-        :type workflow: Workflow
+        :type scheduler: Scheduler
         """
-        model_path = workflow.get_job_path(calc_id) + '/trained_potential.pkl'
+        model_path = scheduler.get_job_path(calc_id) + '/trained_potential.pkl'
         self.logger.info(f'Loading potential from: {model_path}')
-        workflow.block_until_completed(calc_id)
+        scheduler.block_until_completed(calc_id)
         potential.load_potential(model_path)

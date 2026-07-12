@@ -1,12 +1,12 @@
 from abc import ABC, abstractmethod
 from ..utils.recorder import Recorder
-from ..workflow.factory import workflow_builder
+from ..scheduler.factory import scheduler_builder
 from typing import Optional, Union
 import numpy as np
 from ase import Atoms
 from ..storage.storage_base import Storage
 from ..potential.potential_base import Potential
-from ..workflow.workflow_base import Workflow
+from ..scheduler.scheduler_base import Scheduler
 
 
 class Trainer(Recorder, ABC):
@@ -19,12 +19,12 @@ class Trainer(Recorder, ABC):
 
     def __init__(self, **kwargs):
         """
-        set variables and initialize the recorder and default workflow
+        set variables and initialize the recorder and default scheduler
         """
         super().__init__()
 
-        #: default workflow to use within the trainer class
-        self.default_wf = workflow_builder.build(
+        #: default scheduler to use within the trainer class
+        self.default_scheduler = scheduler_builder.build(
             'LOCAL',
             {'root_directory': './trainer'},
         )
@@ -79,7 +79,7 @@ class Trainer(Recorder, ABC):
         potential: Potential,
         storage: Storage,
         dataset_list: list,
-        workflow: Optional[Workflow] = None,
+        scheduler: Optional[Scheduler] = None,
         eweight: float = 1.0,
         fweight: float = 1.0,
         vweight: float = 1.0,
@@ -94,7 +94,7 @@ class Trainer(Recorder, ABC):
         supplied at instantiation to perform the potential training by
         minimizing a loss function.
 
-        :param path_type: specifier for the workflow path, to differentiate
+        :param path_type: specifier for the scheduler path, to differentiate
             training runs
         :type path_type: str
         :param potential: potential to be trained. The actual model itself is
@@ -105,10 +105,10 @@ class Trainer(Recorder, ABC):
         :dataset_list: the list of dataset_handles (e.g. collabfit-IDs)
             within the storage object to use as the dataset.
         :type dataset_list: list
-        :param workflow: the workflow for managing path definition and job
-            submission, if none are supplied, will use the default workflow
+        :param scheduler: the scheduler for managing path definition and job
+            submission, if none are supplied, will use the default scheduler
             defined in this class |default| ``None``
-        :type workflow: Workflow
+        :type scheduler: Scheduler
         :param per_atom_weights: True to read from dataset, or numpy array
             |default| ``False``
         :type per_atom_weights: either boolean or np.ndarray
@@ -129,7 +129,7 @@ class Trainer(Recorder, ABC):
         potential: Potential,
         storage: Storage,
         dataset_list: list,
-        workflow: Workflow,
+        scheduler: Scheduler,
         job_details: dict,
         eweight: float = 1.0,
         fweight: float = 1.0,
@@ -145,7 +145,7 @@ class Trainer(Recorder, ABC):
         minimizing a loss function. While :meth:`train` works synchronously,
         this method submits training to a job scheduler.
 
-        :param path_type: specifier for the workflow path, to differentiate
+        :param path_type: specifier for the scheduler path, to differentiate
             training runs
         :type path_type: str
         :param potential: potential to be trained. The actual model itself is
@@ -156,9 +156,9 @@ class Trainer(Recorder, ABC):
         :dataset_list: the list of dataset_handles (e.g. collabfit-IDs)
             within the storage object to use as the dataset.
         :type dataset_list: list
-        :param workflow: the workflow for managing path definition and job
+        :param scheduler: the scheduler for managing path definition and job
             submission
-        :type workflow: Workflow
+        :type scheduler: Scheduler
         :param eweight: weight of energy data in the loss function
         :type eweight: float
         :param fweight: weight of the force data in the loss function
@@ -182,14 +182,14 @@ class Trainer(Recorder, ABC):
         potential,
         loss=None,
         create_path=True,
-        workflow=None,
+        scheduler=None,
     ):
         """
         Save the model and (optionally) loss data
 
         Write the model (and loss) data to disk from memory
 
-        :param path_type: specifier for the workflow path, to differentiate
+        :param path_type: specifier for the scheduler path, to differentiate
             training runs and where the model will be saved
         :type path_type: str
         :param potential: potential to be saved. This method takes a full
@@ -201,10 +201,10 @@ class Trainer(Recorder, ABC):
         :param create_path: if the function needs to create a new path, or if
             path_type should be used as the full path |default| ``True``
         :type create_path: boolean
-        :param workflow: the workflow for managing path definition, if none are
-            supplied, will use the default workflow defined in this class
+        :param scheduler: the scheduler for managing path definition, if none
+            are supplied, will use the default scheduler defined in this class
             |default| ``None``
-        :type workflow: Workflow
+        :type scheduler: Scheduler
         :returns: path where the model is saved
         :rtype: str
         """
@@ -215,7 +215,7 @@ class Trainer(Recorder, ABC):
         self,
         calc_id: int,
         potential: Potential,
-        workflow: Workflow,
+        scheduler: Scheduler,
     ):
         """
         reload a potential that was trained via a submitted job

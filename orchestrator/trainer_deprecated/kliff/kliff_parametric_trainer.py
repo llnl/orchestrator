@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Optional, Union
 if TYPE_CHECKING:
     from orchestrator.potential.potential_base import Potential
     from orchestrator.potential.kim import KIMPotential
-    from orchestrator.workflow.workflow_base import Workflow
+    from orchestrator.scheduler.scheduler_base import Scheduler
     from kliff.models import KIMModel
     from orchestrator.storage.storage_base import Storage
 
@@ -131,7 +131,7 @@ class ParametricModelTrainer(KLIFFTrainer):
         potential: "KIMPotential",
         storage: "Storage",
         dataset_list: list,
-        workflow=None,
+        scheduler=None,
         eweight: float = 1.0,
         fweight: float = 1.0,
         vweight: float = 1.0,
@@ -145,7 +145,7 @@ class ParametricModelTrainer(KLIFFTrainer):
         supplied at instantiation to perform the potential training by
         minimizing a loss function.
 
-        :param path_type: specifier for the workflow path, to differentiate
+        :param path_type: specifier for the scheduler path, to differentiate
             training runs
         :type path_type: str
         :param potential: :class:`~orchestrator.potential.kim.KIMPotential`
@@ -156,10 +156,10 @@ class ParametricModelTrainer(KLIFFTrainer):
         :dataset_list: the list of dataset_handles (e.g. collabfit-IDs)
             within the storage object to use as the dataset.
         :type dataset_list: list
-        :param workflow: the workflow for managing path definition and job
-            submission, if none are supplied, will use the default workflow
+        :param scheduler: the scheduler for managing path definition and job
+            submission, if none are supplied, will use the default scheduler
             defined in this class |default| ``None``
-        :type workflow: Workflow
+        :type scheduler: Scheduler
         :param eweight: weight of energy data in the loss function
         :type eweight: float
         :param fweight: weight of the force data in the loss function
@@ -181,8 +181,8 @@ class ParametricModelTrainer(KLIFFTrainer):
                              ' are required!')
         if not isinstance(dataset_list, list):
             dataset_list = [dataset_list]
-        if workflow is None:
-            workflow = self.default_wf
+        if scheduler is None:
+            scheduler = self.default_scheduler
 
         workspace = self.trainer_manifest["workspace"]["name"]
         if os.path.exists(workspace):
@@ -247,7 +247,7 @@ class ParametricModelTrainer(KLIFFTrainer):
         path_type: str,
         potential: "Potential",
         storage_args: dict,
-        workflow: "Workflow",
+        scheduler: "Scheduler",
         job_details: dict,
         eweight: float = 1.0,
         fweight: float = 1.0,
@@ -264,7 +264,7 @@ class ParametricModelTrainer(KLIFFTrainer):
         self,
         calc_id: int,
         potential: "Potential",
-        workflow: "Workflow",
+        scheduler: "Scheduler",
     ):
         """
         reload a potential that was trained via a submitted job
