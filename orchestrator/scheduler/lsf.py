@@ -1,14 +1,14 @@
 from abc import ABC
 from os import path, PathLike, getcwd
 from typing import Optional, Union
-from .workflow_base import HPCWorkflow
+from .scheduler_base import HPCScheduler
 
 
-class LSFWF(HPCWorkflow, ABC):
+class LSFScheduler(HPCScheduler, ABC):
     """
-    Workflow manager for full execution using a batch file and LSF scheduler
+    Scheduler manager for full execution using a batch file and LSF scheduler
 
-    LSFWF is a fully featured workflow module for submitting jobs to
+    LSFScheduler is a fully featured scheduler module for submitting jobs to
     the LSF scheduler using batch files while Orchestrator is running on an LSF
     or different machine. It can handle asynchronus job submission but still
     provides the option for blocking (synchronous) behavior. Responsibilities
@@ -81,13 +81,13 @@ class LSFWF(HPCWorkflow, ABC):
         job_details: dict[str, Union[float, str]],
     ) -> str:
         """
-        Set LSF arguments from job_details or from defaults defined by the WF
+        Set LSF arguments from job_details or defaults defined by the Scheduler
 
         This is a helper function for constructing the preamble of the lrun
         command. Values set are nodes, tasks (optional).
 
         :param job_details: dict passed through :meth:`~submit_job` including
-            any desired alterations from the workflow defaults
+            any desired alterations from the scheduler defaults
         :type job_details: dict
         :returns: populated preamble string
         :rtype: str

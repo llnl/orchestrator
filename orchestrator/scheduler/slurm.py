@@ -2,18 +2,18 @@ from abc import ABC
 from os import path, PathLike, getcwd
 import subprocess as sp
 from typing import Optional, Union
-from .workflow_base import HPCWorkflow
+from .scheduler_base import HPCScheduler
 
 
-class SlurmWF(HPCWorkflow, ABC):
+class SlurmScheduler(HPCScheduler, ABC):
     """
-    Workflow manager for full execution using a batch file and slurm scheduler
+    Scheduler manager for full execution using a batch file and slurm scheduler
 
-    SlurmWF is a fully featured workflow module for submitting jobs to the
-    slurm scheduler using batch files. It can handle asynchronus job submission
-    but still provides the option for blocking (synchronous) behavior.
-    Responsibilities include directory creation, job creation, job status
-    checking.
+    SlurmScheduler is a fully featured scheduler module for submitting jobs to
+    the slurm scheduler using batch files. It can handle asynchronus job
+    submission but still provides the option for blocking (synchronous)
+    behavior. Responsibilities include directory creation, job creation, job
+    status checking.
     """
 
     def __init__(self, default_template: Optional[str] = None, **kwargs):
@@ -69,13 +69,13 @@ class SlurmWF(HPCWorkflow, ABC):
         job_details: dict[str, Union[float, str]],
     ) -> str:
         """
-        Set slurm arguments from job_details or from defaults defined by the WF
+        Set slurm args from job_details or defaults defined by the Scheduler
 
         This is a helper function for constructing the preamble of the srun
         command. Values set are nodes, tasks (optional)
 
         :param job_details: dict passed through :meth:`~submit_job` including
-            any desired alterations from the workflow defaults
+            any desired alterations from the scheduler defaults
         :type job_details: dict
         :returns: populated preable string
         :rtype: str
@@ -242,7 +242,7 @@ class SlurmWF(HPCWorkflow, ABC):
                 updated_states.append(known_status.state)
 
             if status_changed:
-                self.checkpoint_workflow()
+                self.checkpoint_scheduler()
         return updated_states
 
     def _log_default_job_details(self):

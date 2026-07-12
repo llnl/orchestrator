@@ -1,14 +1,14 @@
 import shutil
 from os import system, PathLike
 from typing import Optional, Union
-from .workflow_base import Workflow, JobStatus
+from .scheduler_base import Scheduler, JobStatus
 from ..utils.restart import restarter
 from ..utils.data_standard import METADATA_KEY
 
 
-class LocalWF(Workflow):
+class LocalScheduler(Scheduler):
     """
-    Workflow manager for execution in the local environment (i.e. login node)
+    Scheduler manager for execution in the local environment (i.e. login node)
 
     Responsibilities include directory creation, job creation, job status
     checking. Can run with mpi tasks if tasks are set in job_details, but no
@@ -25,12 +25,12 @@ class LocalWF(Workflow):
         :type kwargs:
         """
         self.current_job_id = 0
-        self.ID_TYPE = int  # LocalWF uses integer job IDs
+        self.ID_TYPE = int  # LocalScheduler uses integer job IDs
         super().__init__(**kwargs)
 
-    def checkpoint_workflow(self):
+    def checkpoint_scheduler(self):
         """
-        checkpoint the workflow module into the checkpoint file
+        checkpoint the scheduler module into the checkpoint file
 
         save necessary internal variables into a dict with key checkpoint_name
         and write to the (json) checkpoint file for restart capabilities
@@ -44,9 +44,9 @@ class LocalWF(Workflow):
         }
         restarter.write_checkpoint_file(self.checkpoint_file, save_dict)
 
-    def restart_workflow(self):
+    def restart_scheduler(self):
         """
-        restart the workflow module from the checkpoint file
+        restart the scheduler module from the checkpoint file
 
         check if the checkpoint_file has an entry matching the checkpoint_name
         and set internal variables accordingly if so
@@ -85,7 +85,8 @@ class LocalWF(Workflow):
         Submits a job for running.
 
         submit_job handles job submission for the modules and is the main
-        interface for the workflows to be used. For the :class:`LocalWF`
+        interface for the schedulers to be used. For the
+        :class:`LocalScheduler`
         implementation, this method uses ``os.system`` to execute the command
         on via command line interface. Inputs define the command to be executed
         for the job, location for the run, and details of the job.
@@ -94,10 +95,10 @@ class LocalWF(Workflow):
         successfully completed :class:`~JobStatus` for the present job to run.
         If one of the dependencies returns an error, this job will not run and
         the status will return an error. Creates the
-        :class:`~.workflow_base.JobStatus` for this job, where the job state is
-        always 'done' since jobs are run instantly on the command line. Returns
-        a job handle (ID) that can be used to query status and to retrieve the
-        present job's :class:`~.workflow_base.JobStatus`.
+        :class:`~.scheduler_base.JobStatus` for this job, where the job state
+        is always 'done' since jobs are run instantly on the command line.
+        Returns a job handle (ID) that can be used to query status and to
+        retrieve the present job's :class:`~.scheduler_base.JobStatus`.
 
         :param command: command that defines the job to be executed
         :type command: implementation dependent
@@ -122,10 +123,12 @@ class LocalWF(Workflow):
         extra_args = job_details.get('extra_args', {})
 
         if not synchronous:
-            self.logger.info(('LocalWF cannot be run asynchronously, running '
-                              'in a blocking manner'))
+            self.logger.info(
+                ('LocalScheduler cannot be run asynchronously, running '
+                 'in a blocking manner'))
         if extra_args:
-            self.logger.info('Note that extra_args are not read by LocalWF')
+            self.logger.info(
+                'Note that extra_args are not read by LocalScheduler')
 
         job_can_run = True
         exit_code = 'undefined error'
@@ -159,7 +162,7 @@ class LocalWF(Workflow):
         if job_can_run:
             self.logger.info(f'Spawning job with ID: {calc_id}')
             exit_code = system(
-                f'(cd {run_path}; {command} 2>> local_wf_stdout.log)')
+                f'(cd {run_path}; {command} 2>> local_scheduler_stdout.log)')
             self.logger.info(f'Job {calc_id} execution completed')
             state = 'done'
         else:
@@ -176,5 +179,5 @@ class LocalWF(Workflow):
         )
         self.jobs[calc_id] = job_status
         self.save_job_dict()
-        self.checkpoint_workflow()
+        self.checkpoint_scheduler()
         return calc_id

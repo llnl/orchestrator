@@ -4,7 +4,7 @@ from abc import ABC
 from copy import deepcopy
 from time import sleep
 from typing import Union
-from .workflow_base import HPCWorkflow, JobStatus
+from .scheduler_base import HPCScheduler, JobStatus
 from ..utils.data_standard import METADATA_KEY
 
 from aiida import load_profile
@@ -15,24 +15,24 @@ from aiida.manage.configuration import get_config
 from aiida.engine.daemon.client import get_daemon_client, DaemonClient
 
 
-class AiidaWF(HPCWorkflow, ABC):
+class AiidaScheduler(HPCScheduler, ABC):
     """
-    Workflow class for using AiiDA
+    Scheduler class for using AiiDA
 
-    Note that ``kwargs`` set the default parameters for the workflow,
+    Note that ``kwargs`` set the default parameters for the scheduler,
     but can be overridden by values passed into ``job_details`` provided to
     :meth:`submit_job`.
     """
 
     def __init__(self, **kwargs: dict):
         """
-        Initialize the values needed for the AiiDA WF.
+        Initialize the values needed for the AiiDA Scheduler.
 
-        :param kwargs: arguments to control workflow behavior, keys
+        :param kwargs: arguments to control scheduler behavior, keys
             may include root_directory, checkpoint_file, checkpoint_name,
             and job_record. These will be defaulted to
-            './orchestrator_workflow' and './orchestrator_checkpoint.json',
-            'workflow', and './job_record.pkl', respectively. AiiDA
+            './orchestrator_scheduler' and './orchestrator_checkpoint.json',
+            'scheduler', and './job_record.pkl', respectively. AiiDA
             additionally uses 'queue' -> 'pbatch', 'account' -> 'iap',
             'walltime' -> '1:00', 'nodes' -> 1, 'tasks' -> 1, and
             'tasks_per_node' -> 1
@@ -122,18 +122,18 @@ class AiidaWF(HPCWorkflow, ABC):
 
         return client
 
-    def checkpoint_workflow(self):
+    def checkpoint_scheduler(self):
         """
-        Checkpoint the workflow module into the checkpoint file.
+        Checkpoint the scheduler module into the checkpoint file.
 
         Save necessary internal variables into a dict with key checkpoint_name
         and write to the (json) checkpoint file for restart capabilities.
         """
         self.save_job_dict()
 
-    def restart_workflow(self):
+    def restart_scheduler(self):
         """
-        Restart the workflow module from the checkpoint file.
+        Restart the scheduler module from the checkpoint file.
 
         Check if the checkpoint_file has an entry matching the checkpoint_name
         and set internal variables accordingly if so.
@@ -181,14 +181,14 @@ class AiidaWF(HPCWorkflow, ABC):
                 status_changed = True
             updated_states.append(status)
         if status_changed:
-            self.checkpoint_workflow()
+            self.checkpoint_scheduler()
 
         return updated_states
 
     def block_until_completed(self, pks: Union[int, list[int]]):
         """
         Function will periodically check on the job status in AiiDA. The time
-        between checks is based on the wait_freq variable in the workflow. The
+        between checks is based on the wait_freq variable in the scheduler. The
         default value is 60 seconds.
 
         :param pks: list of AiiDA PKs of the jobs to check for
@@ -244,14 +244,14 @@ class AiidaWF(HPCWorkflow, ABC):
         default job resources (nodes, account, walltime, etc.) are present,
         they can be overridden by providing these keywords in the
         ``job_details`` dict for any specific calculation. Creates the
-        :class:`~.workflow_base.JobStatus` for this job, where the job state is
-        initially 'CREATED' and can be updated to 'EXCEPTED', 'FINISHED',
+        :class:`~.scheduler_base.JobStatus` for this job, where the job state
+        is initially 'CREATED' and can be updated to 'EXCEPTED', 'FINISHED',
         'KILLED', 'RUNNING', or 'WAITING'. The 'FINISHED' state means the
         calculation has completed, but can be decorated with suffixes that add
         more information if the job didn't successfully complete (i.e.
         'FINISHED_TIMEOUT'). Status checks are performed by
         :meth:`~update_job_status`. Returns the AiiDA pk, which can be used to
-        retrieve the present job's :class:`~.workflow_base.JobStatus`.
+        retrieve the present job's :class:`~.scheduler_base.JobStatus`.
 
         :param builder: AiiDA builder object containing the required
             information to submit the calculation.
@@ -294,7 +294,7 @@ class AiidaWF(HPCWorkflow, ABC):
         )
         self.jobs[pk] = job_status
 
-        self.checkpoint_workflow()
+        self.checkpoint_scheduler()
 
         return pk
 

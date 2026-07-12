@@ -63,23 +63,23 @@ class JobStatus:
         self.metadata = metadata if metadata is not None else {}
 
 
-class Workflow(Recorder, ABC):
+class Scheduler(Recorder, ABC):
     """
-    Abstract base class to manage workflows
+    Abstract base class to manage schedulers
 
     Responsibilities include directory creation, job creation, job status
-    checking. A given workflow class will use the ``root_directory`` as the
+    checking. A given scheduler class will use the ``root_directory`` as the
     base for all calculation inputs and outputs in a directory hierarchy
-    managed by :meth:`make_path_base` and :meth:`make_path`. ``workflow_args``
-    provide a vehicle for modulating the workflow behavior, though are not
+    managed by :meth:`make_path_base` and :meth:`make_path`. ``scheduler_args``
+    provide a vehicle for modulating the scheduler behavior, though are not
     strictly required. The ``counters`` and ``jobs`` dictionaries are also
-    initialized at instantiation, which are used to internally track workflow
+    initialized at instantiation, which are used to internally track scheduler
     components.
     """
 
     def __init__(
         self,
-        root_directory: Optional[str] = './orchestrator_workflow',
+        root_directory: Optional[str] = './orchestrator_scheduler',
         checkpoint_file: Optional[str] = './orchestrator_checkpoint.json',
         checkpoint_name: Optional[Union[str, None]] = None,
         job_record_file: Optional[Union[str, None]] = None,
@@ -89,13 +89,13 @@ class Workflow(Recorder, ABC):
         set variables and initialize the recorder
 
         :param root_directory: name of the directory under which all files and
-            subdirectories will sit |default| './orchestrator_workflow'
+            subdirectories will sit |default| './orchestrator_scheduler'
         :type root_directory: str
         :param checkpoint_file: name of the checkpoint file to write restart
             information to |default| './orchestrator_checkpoint.json'
         :type checkpoint_file: str
         :param checkpoint_name: name of the restart block for this module in
-            the checkpoint file |default| 'workflow'
+            the checkpoint file |default| 'scheduler'
         :type checkpoint_name: str
         :param job_record_file: name of the file to save the pickled jobs dict
             |default| './job_record.pkl'
@@ -122,7 +122,7 @@ class Workflow(Recorder, ABC):
             'done_unknown',
         ]
         self.new_counters = False
-        self.restart_workflow()
+        self.restart_scheduler()
 
     def make_path_base(
         self,
@@ -181,7 +181,7 @@ class Workflow(Recorder, ABC):
 
         self.counters[counter_key] += 1
         self.new_counters = True
-        self.checkpoint_workflow()  # necessary for local
+        self.checkpoint_scheduler()  # necessary for local
         return dir_name
 
     def get_job_status(self, job_handle: Union[int, str]) -> JobStatus:
@@ -251,10 +251,10 @@ class Workflow(Recorder, ABC):
 
         This method handles three types of inputs:
         1. Integer calc_ids (e.g., [1, 2, 3])
-        2. String calc_ids (e.g., ['f123456789ab'] for Flux workflow)
+        2. String calc_ids (e.g., ['f123456789ab'] for Flux scheduler)
         3. Explicit file paths (e.g., ['./path/to/calc', '/abs/path'])
 
-        The method validates calc_ids against the workflow's ID_TYPE if
+        The method validates calc_ids against the scheduler's ID_TYPE if
         available
 
         :param paths: List of calc_ids (int or str) or explicit file paths
@@ -269,7 +269,7 @@ class Workflow(Recorder, ABC):
         :rtype: tuple[list[str], list[dict]]
         :raises UnidentifiedPathError: If paths cannot be resolved as calc_ids
             or valid paths
-        :raises TypeError: If calc_ids don't match the workflow's expected
+        :raises TypeError: If calc_ids don't match the scheduler's expected
             ID_TYPE
         """
         if not paths:
@@ -277,14 +277,14 @@ class Workflow(Recorder, ABC):
 
         first_item = paths[0]
 
-        # Get the workflow's expected ID type if available
+        # Get the scheduler's expected ID type if available
         expected_id_type = getattr(self, 'ID_TYPE', None)
 
         # Case 1: Integer calc_ids
         if isinstance(first_item, int):
-            # Validate against workflow's ID_TYPE if it's set
+            # Validate against scheduler's ID_TYPE if it's set
             if expected_id_type is not None and expected_id_type is not int:
-                raise TypeError('This workflow expects calc_ids of type '
+                raise TypeError('This scheduler expects calc_ids of type '
                                 f'{expected_id_type.__name__}, '
                                 f'but received int. Got: {first_item}')
 
@@ -308,9 +308,9 @@ class Workflow(Recorder, ABC):
                         f'Only calc_ids are accepted. Got: {first_item}')
                 return paths, [{} for _ in range(len(paths))]
 
-            # Validate against workflow's ID_TYPE if it's set
+            # Validate against scheduler's ID_TYPE if it's set
             if expected_id_type is not None and expected_id_type is not str:
-                raise TypeError(f'This workflow expects calc_ids of type '
+                raise TypeError(f'This scheduler expects calc_ids of type '
                                 f'{expected_id_type.__name__}, '
                                 'but received str that does not appear to be a'
                                 f' file path. Got: {first_item}')
@@ -345,7 +345,7 @@ class Workflow(Recorder, ABC):
 
     def get_all_statuses(self) -> dict[int, JobStatus]:
         """
-        Returns information about all jobs from this Workflow.
+        Returns information about all jobs from this Scheduler.
 
         Returns a dictionary with ``job_handle``: ``status``, where
         ``job_handle`` is returned by :meth:`~submit_job` and ``status`` is a
@@ -377,8 +377,9 @@ class Workflow(Recorder, ABC):
         """
         Serialize the job dictionary for persistant storage
 
-        Write the jobs dict, containing all of the workflow's JobStatus objects
-        to the job_record_file. The record file is overwritten each time.
+        Write the jobs dict, containing all of the scheduler's JobStatus
+        objects to the job_record_file. The record file is overwritten each
+        time.
         """
         copied_dict = False
         # if the file has already been written, we want to save the old version
@@ -487,7 +488,7 @@ class Workflow(Recorder, ABC):
         4. Submits a new job with the original or updated job_details
 
         :param calc_id: ID of the original job to restart
-        :type calc_id: int or str (depends on workflow implementation)
+        :type calc_id: int or str (depends on scheduler implementation)
         :param command: New command to run (if None, tries to use original
             command)
         :type command: str, optional
@@ -600,9 +601,9 @@ class Workflow(Recorder, ABC):
         return new_calc_id
 
     @abstractmethod
-    def checkpoint_workflow(self):
+    def checkpoint_scheduler(self):
         """
-        checkpoint the workflow module into the checkpoint file
+        checkpoint the scheduler module into the checkpoint file
 
         save necessary internal variables into a dict with key checkpoint_name
         and write to the (json) checkpoint file for restart capabilities
@@ -610,9 +611,9 @@ class Workflow(Recorder, ABC):
         pass
 
     @abstractmethod
-    def restart_workflow(self):
+    def restart_scheduler(self):
         """
-        restart the workflow module from the checkpoint file
+        restart the scheduler module from the checkpoint file
 
         check if the checkpoint_file has an entry matching the checkpoint_name
         and set internal variables accordingly if so
@@ -626,7 +627,7 @@ class Workflow(Recorder, ABC):
 
         Helper function to run when blocking behavior is desired. Will
         consistently check the queue until the specified job has completed.
-        Implementation for synchronous workflows is just to pass
+        Implementation for synchronous schedulers is just to pass
 
         :param calc_ids: list of job IDs of the calculations to check for
             completion. Can also pass a single ID.
@@ -645,8 +646,8 @@ class Workflow(Recorder, ABC):
         Submits a job for running
 
         submit_job handles job submission for the modules and is the main
-        interface for the workflows to be used. Inputs define the command to be
-        executed for the job, location for the run, and details of the job
+        interface for the schedulers to be used. Inputs define the command to
+        be executed for the job, location for the run, and details of the job
         resources. ``job_details`` inlcude ``dependencies`` of the job in the
         form of a list of job_ids, if the job is blocking (``synchronus``) or
         not, as a boolean, and an extra dictionary, ``extra_args``, to add
@@ -674,11 +675,11 @@ class Workflow(Recorder, ABC):
         pass
 
 
-class HPCWorkflow(Workflow, ABC):
+class HPCScheduler(Scheduler, ABC):
     """
-    Generic (and abstract class) for workflows leveraging HPC schedulers
+    Generic (and abstract class) for schedulers leveraging HPC schedulers
 
-    HPCWorkflow defines the shared init args and restart functionality that
+    HPCScheduler defines the shared init args and restart functionality that
     LSF, Slurm, and other HPC schedulers require. It is not instantitated
     directly, but inherited.
     """
@@ -700,7 +701,7 @@ class HPCWorkflow(Workflow, ABC):
         set variables and initialize the recorder
 
         The provided input arguments set the default parameters for the
-        workflow, but can be overridden by values passed into ``job_details``
+        scheduler, but can be overridden by values passed into ``job_details``
         dict provided to :meth:`submit_job`.
 
         :param queue: default name of the queue to submit to
@@ -780,9 +781,9 @@ class HPCWorkflow(Workflow, ABC):
         else:
             return f'{hours:02}:{remaining_minutes:02}'
 
-    def checkpoint_workflow(self):
+    def checkpoint_scheduler(self):
         """
-        checkpoint the workflow module into the checkpoint file
+        checkpoint the scheduler module into the checkpoint file
 
         save necessary internal variables into a dict with key checkpoint_name
         and write to the (json) checkpoint file for restart capabilities
@@ -799,9 +800,9 @@ class HPCWorkflow(Workflow, ABC):
             self.new_counters = False
             self.new_unknown_id = False
 
-    def restart_workflow(self):
+    def restart_scheduler(self):
         """
-        restart the workflow module from the checkpoint file
+        restart the scheduler module from the checkpoint file
 
         check if the checkpoint_file has an entry matching the checkpoint_name
         and set internal variables accordingly if so
@@ -922,7 +923,7 @@ class HPCWorkflow(Workflow, ABC):
         if custom_preamble is not None:
             launch_string = f'{custom_preamble} {command}'
         else:
-            # run string defined for specific workflows
+            # run string defined for specific schedulers
             launch_string = f'{self.run_string} {scheduler_preamble} {command}'
         replacements = [
             job_details.get('nodes', self.default_nodes),
@@ -1044,7 +1045,7 @@ class HPCWorkflow(Workflow, ABC):
                 updated_states.append(known_status.state)
 
         if status_changed:
-            self.checkpoint_workflow()
+            self.checkpoint_scheduler()
 
         # Raise exception after processing all jobs
         if problematic_jobs:
@@ -1075,7 +1076,7 @@ class HPCWorkflow(Workflow, ABC):
         """
         Parse scheduler-specific state from query output.
 
-        Maps scheduler-specific states to common workflow states:
+        Maps scheduler-specific states to common scheduler states:
         'pending', 'dependency', 'running', 'completing', 'done',
         'done_timeout', 'done_cancelled', 'done_other', 'done_unknown',
         'unknown', 'error'
@@ -1214,7 +1215,7 @@ class HPCWorkflow(Workflow, ABC):
                 raise UnfullfillableDependenciesError()
 
         self.jobs[calc_id] = job_status
-        self.checkpoint_workflow()
+        self.checkpoint_scheduler()
         if synchronous:
             self.block_until_completed(calc_id)
         return calc_id

@@ -1,14 +1,14 @@
 from abc import ABC
 from os import path, PathLike, getcwd
 from typing import Optional, Union
-from .workflow_base import HPCWorkflow
+from .scheduler_base import HPCScheduler
 
 
-class FluxWF(HPCWorkflow, ABC):
+class FluxScheduler(HPCScheduler, ABC):
     """
-    Workflow manager for full execution using a batch file and Flux scheduler.
+    Scheduler manager for full execution using a batch file and Flux scheduler.
 
-    FluxWF is a fully featured workflow module for submitting jobs to
+    FluxScheduler is a fully featured scheduler module for submitting jobs to
     the Flux scheduler using batch files while Orchestrator is running on
     another machine. It can handle asynchronous job submission but still
     provides the option for blocking (synchronous) behavior. Responsibilities
@@ -79,7 +79,7 @@ class FluxWF(HPCWorkflow, ABC):
         Set Flux arguments from job_details or from defaults.
 
         :param job_details: dict passed through :meth:`~submit_job` including
-            any desired alterations from the workflow defaults
+            any desired alterations from the scheduler defaults
         :type job_details: dict
         :returns: populated preamble string
         :rtype: str
@@ -135,7 +135,7 @@ class FluxWF(HPCWorkflow, ABC):
             flux_id_index = split_output.index(job_id)
             flux_state = split_output[flux_id_index + 1]
 
-            # Map Flux states to workflow states
+            # Map Flux states to scheduler states
             if flux_state in ['PRIORITY', 'SCHED']:
                 return 'pending'
             elif flux_state == 'DEPEND':
