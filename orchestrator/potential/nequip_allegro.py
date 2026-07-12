@@ -21,7 +21,7 @@ from orchestrator.utils.data_standard import (
     SELECTION_MASK_KEY,
     STRESS_KEY,
 )
-from orchestrator.workflow import Workflow
+from orchestrator.scheduler import Scheduler
 
 from .kim_mixins import KIMKitHandler
 from .potential_base import Potential
@@ -497,7 +497,7 @@ class NequIPAllegroPotential(Potential, KIMKitHandler):
     def load_from_submitted_training(
         self,
         calc_id: Union[str, int],
-        workflow: Workflow,
+        scheduler: Scheduler,
     ):
         """Update model hyperparameters using the results from .submit_train().
 
@@ -508,13 +508,13 @@ class NequIPAllegroPotential(Potential, KIMKitHandler):
 
         :param calc_id: The calculation ID returned by submit_train
         :type calc_id: Union[str, int]
-        :param workflow: Workflow object used to manage the job
-        :type workflow: Workflow
+        :param scheduler: Scheduler object used to manage the job
+        :type scheduler: Scheduler
         :return: None
         """
-        workflow.block_until_completed(calc_id)
+        scheduler.block_until_completed(calc_id)
 
-        path = Path(workflow.get_job_path(calc_id)).resolve()
+        path = Path(scheduler.get_job_path(calc_id)).resolve()
 
         config_file = path / "config.yaml"
         parameters_file = self.find_newest_best_ckpt(path).resolve()
@@ -597,7 +597,7 @@ class NequIPAllegroPotential(Potential, KIMKitHandler):
         self,
         dataset_list: list[str],
         storage: Storage,
-        workflow: Optional[Workflow],
+        scheduler: Optional[Scheduler],
         energy_weight: float = 1.0,
         force_weight: float = 1.0,
         stress_weight: float = 0.0,
@@ -619,8 +619,8 @@ class NequIPAllegroPotential(Potential, KIMKitHandler):
         :type dataset_list: list[str]
         :param storage: Storage object to access training data
         :type storage: Storage
-        :param workflow: Workflow object for job management
-        :type workflow: Workflow
+        :param scheduler: Scheduler object for job management
+        :type scheduler: Scheduler
         :param energy_weight: Weight for energy terms in the loss function
         :type energy_weight: float
         :param force_weight: Weight for force terms in the loss function
@@ -648,7 +648,7 @@ class NequIPAllegroPotential(Potential, KIMKitHandler):
         :rtype: tuple[str, float]
         """
 
-        work_dir = ("." if workflow is None else workflow.make_path(
+        work_dir = ("." if scheduler is None else scheduler.make_path(
             self.__class__.__name__, "training"))
         abs_work_dir = os.path.abspath(work_dir)  # nequip-train gets confused
 
@@ -656,7 +656,7 @@ class NequIPAllegroPotential(Potential, KIMKitHandler):
             abs_work_dir,
             storage,
             dataset_list,
-            workflow,
+            scheduler,
             train_frac,
             test_frac,
             val_frac,
@@ -675,7 +675,7 @@ class NequIPAllegroPotential(Potential, KIMKitHandler):
         # Need to compile the model
         # Already confirmed that parameters_files is not also none
 
-        # Move into workflow execution dir manually since YAML doesn't let you
+        # Move into scheduler execution dir manually since YAML doesn't let you
         # specify the output directory
         cwd = os.getcwd()
         os.chdir(work_dir)
@@ -722,7 +722,7 @@ class NequIPAllegroPotential(Potential, KIMKitHandler):
         self,
         dataset_list: list[str],
         storage: Storage,
-        workflow: Workflow,
+        scheduler: Scheduler,
         job_details: dict,
         energy_weight: float = 1.0,
         force_weight: float = 1.0,
@@ -744,8 +744,8 @@ class NequIPAllegroPotential(Potential, KIMKitHandler):
         :type dataset_list: list[str]
         :param storage: Storage object to access training data
         :type storage: Storage
-        :param workflow: Workflow object for job management
-        :type workflow: Workflow
+        :param scheduler: Scheduler object for job management
+        :type scheduler: Scheduler
         :param job_details: information controlling job submission
         :type job_details: dict
         :param energy_weight: Weight for energy terms in the loss function
@@ -775,7 +775,7 @@ class NequIPAllegroPotential(Potential, KIMKitHandler):
         :rtype: tuple[str, float]
         """
 
-        work_dir = workflow.make_path(self.__class__.__name__, ".")
+        work_dir = scheduler.make_path(self.__class__.__name__, ".")
 
         cwd = os.getcwd()
         os.chdir(work_dir)
@@ -783,7 +783,7 @@ class NequIPAllegroPotential(Potential, KIMKitHandler):
             ".",  # so that the internal paths are correct relative to work_dir
             storage,
             dataset_list,
-            workflow,
+            scheduler,
             train_frac,
             test_frac,
             val_frac,
@@ -802,7 +802,7 @@ class NequIPAllegroPotential(Potential, KIMKitHandler):
         abs_work_dir = os.path.abspath(work_dir)  # nequip-train gets confused
         command = f"nequip-train -cp {abs_work_dir} -cn config.yaml"
 
-        calc_id = workflow.submit_job(
+        calc_id = scheduler.submit_job(
             command=command,
             run_path=work_dir,
             job_details=job_details,
@@ -814,7 +814,7 @@ class NequIPAllegroPotential(Potential, KIMKitHandler):
         path_type: str,
         storage: Storage,
         dataset_list: list,
-        workflow: Workflow,
+        scheduler: Scheduler,
         train_frac: float = 0.8,
         test_frac: float = 0.1,
         val_frac: float = 0.1,
@@ -842,10 +842,10 @@ class NequIPAllegroPotential(Potential, KIMKitHandler):
         :param dataset_list: list of dataset handles to train to. Will be
             concatenated then randomly split for train/test/val.
         :type dataset_list: list
-        :param workflow: the workflow for managing path definition and job
-            submission, if none are supplied, will use the default workflow
+        :param scheduler: the scheduler for managing path definition and job
+            submission, if none are supplied, will use the default scheduler
             defined in this class
-        :type workflow: Workflow
+        :type scheduler: Scheduler
         :param val_frac: Fraction of configurations to use for validation split
         :type val_frac: float
         :param energy_weight: weight of energy data in the loss function

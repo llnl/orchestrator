@@ -6,7 +6,7 @@ from typing import Optional, Union
 from .potential_base import Potential, ModelHyperparameters
 from .kim_mixins import KIMKitHandler
 from ..storage import Storage
-from ..workflow import Workflow
+from ..scheduler import Scheduler
 from dataclasses import dataclass, asdict
 
 
@@ -844,7 +844,7 @@ class SNAPPotential(Potential, KIMKitHandler):
 
     def _read_lammps_commands_from_mod(self) -> list[str]:
         """
-        Read LAMMPS commands from the .mod file and rewrite paths to be absolute.
+        Read LAMMPS commands from .mod file and rewrite paths to be absolute.
 
         This helper method reads all non-comment, non-empty lines from the
         snap_potential.mod file and rewrites relative paths to coefficient
@@ -859,7 +859,8 @@ class SNAPPotential(Potential, KIMKitHandler):
 
         mod_path = self.potential_files.get("snap_potential.mod")
         if not mod_path:
-            raise RuntimeError("snap_potential.mod is missing from potential_files")
+            raise RuntimeError(
+                "snap_potential.mod is missing from potential_files")
 
         coeff_path = Path(self.potential_files.get("snap_potential.snapcoeff"))
         coeff_path_abs = coeff_path.resolve().as_posix()
@@ -887,7 +888,8 @@ class SNAPPotential(Potential, KIMKitHandler):
 
         if not lmpcmds:
             raise RuntimeError(
-                f"snap_potential.mod at {mod_path} contains no LAMMPS commands")
+                f"snap_potential.mod at {mod_path} contains no LAMMPS commands"
+            )
 
         return lmpcmds
 
@@ -994,7 +996,7 @@ class SNAPPotential(Potential, KIMKitHandler):
         Write a script to run the potential training outside of memory
 
         This is a helper function for generating a script, training_script.py,
-        which can be executed via a workflow or offline. It additionally saves
+        which can be executed via a scheduler or offline. It additionally saves
         needed additional files with it, such as a weights.txt data file.
 
         :param save_path: path where the training script will be written
@@ -1101,7 +1103,7 @@ class SNAPPotential(Potential, KIMKitHandler):
             f'model_path, error = potential.train('
             f'dataset_list={dataset_list},'
             f'storage=storage,'
-            f'workflow=None,'  # Don't use a workflow
+            f'scheduler=None,'  # Don't use a scheduler
             f'energy_weight={energy_weight},'
             f'force_weight={force_weight},'
             f'stress_weight={stress_weight},'
@@ -1135,7 +1137,7 @@ class SNAPPotential(Potential, KIMKitHandler):
         self,
         dataset_list: list[str],
         storage: Storage,
-        workflow: Workflow,
+        scheduler: Scheduler,
         energy_weight: float = 1.0,
         force_weight: float = 1.0,
         stress_weight: float = 1.0,
@@ -1156,8 +1158,8 @@ class SNAPPotential(Potential, KIMKitHandler):
         :type dataset_list: list[str]
         :param storage: Storage object to access training data
         :type storage: Storage
-        :param workflow: Workflow object for job management
-        :type workflow: Workflow
+        :param scheduler: Scheduler object for job management
+        :type scheduler: Scheduler
         :param energy_weight: Weight for energy terms in the loss function
         :type energy_weight: float
         :param force_weight: Weight for force terms in the loss function
@@ -1194,15 +1196,15 @@ class SNAPPotential(Potential, KIMKitHandler):
                              f'but was set to {val_frac}')
 
         # Create working directory
-        if workflow is None:
+        if scheduler is None:
             # this is the case when running from a training script to avoid
             # making nested dirs
             working_path = '.'
             # in this case the settings file has already been generated
             settings_file = 'snap_potential.in'
         else:
-            working_path = workflow.make_path(self.__class__.__name__,
-                                              'training')
+            working_path = scheduler.make_path(self.__class__.__name__,
+                                               'training')
             settings_file = self.write_settings_file(
                 working_path,
                 # use these values if weights are greater than 0
@@ -1614,7 +1616,7 @@ class SNAPPotential(Potential, KIMKitHandler):
         self,
         dataset_list: list[str],
         storage: Storage,
-        workflow: Workflow,
+        scheduler: Scheduler,
         job_details: Optional[dict] = None,
         energy_weight: float = 1.0,
         force_weight: float = 1.0,
@@ -1632,8 +1634,8 @@ class SNAPPotential(Potential, KIMKitHandler):
         :type dataset_list: list[str]
         :param storage: Storage object to access training data
         :type storage: Storage
-        :param workflow: Workflow object for job management
-        :type workflow: Workflow
+        :param scheduler: Scheduler object for job management
+        :type scheduler: Scheduler
         :param job_details: information controlling job submission
         :type job_details: dict
         :param energy_weight: Weight for energy terms in the loss function
@@ -1671,7 +1673,7 @@ class SNAPPotential(Potential, KIMKitHandler):
             raise ValueError('`val_frac` is not supported for FitSNAP yet, '
                              f'but was set to {val_frac}')
 
-        save_path = workflow.make_path(self.__class__.__name__, 'training')
+        save_path = scheduler.make_path(self.__class__.__name__, 'training')
 
         script_filename = self._write_training_script(
             save_path,
@@ -1691,7 +1693,7 @@ class SNAPPotential(Potential, KIMKitHandler):
 
         job_details['custom_preamble'] = 'python'
 
-        calc_id = workflow.submit_job(
+        calc_id = scheduler.submit_job(
             script_filename,
             save_path,
             job_details=job_details,
@@ -1702,7 +1704,7 @@ class SNAPPotential(Potential, KIMKitHandler):
     def load_from_submitted_training(
         self,
         calc_id: Union[str, int],
-        workflow: Workflow,
+        scheduler: Scheduler,
     ):
         """
         Load a potential that was trained via a submitted job.
@@ -1714,14 +1716,14 @@ class SNAPPotential(Potential, KIMKitHandler):
 
         :param calc_id: The calculation ID returned by submit_train
         :type calc_id: Union[str, int]
-        :param workflow: Workflow object used to manage the job
-        :type workflow: Workflow
+        :param scheduler: Scheduler object used to manage the job
+        :type scheduler: Scheduler
         :return: None
         """
         # include checks that training finished appropriately
-        workflow.block_until_completed(calc_id)
+        scheduler.block_until_completed(calc_id)
 
-        self.load_potential(workflow.get_job_path(calc_id))
+        self.load_potential(scheduler.get_job_path(calc_id))
 
     def get_lammps_commands(self) -> str:
         """
@@ -1741,4 +1743,3 @@ class SNAPPotential(Potential, KIMKitHandler):
 
         # Join all commands with newlines
         return "\n".join(lmpcmds)
-        

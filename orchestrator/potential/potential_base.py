@@ -4,7 +4,7 @@ import numpy as np
 from ase import Atoms
 from typing import Union, Optional
 from ..storage import Storage
-from ..workflow import Workflow
+from ..scheduler import Scheduler
 from ..utils.recorder import Recorder
 from dataclasses import dataclass
 
@@ -213,7 +213,7 @@ class Potential(Recorder, ABC):
         self,
         dataset_list: list[str],
         storage: Storage,
-        workflow: Workflow,
+        scheduler: Scheduler,
         energy_weight: float = 1.0,
         force_weight: float = 1.0,
         stress_weight: float = 1.0,
@@ -234,8 +234,8 @@ class Potential(Recorder, ABC):
         :type dataset_list: list[str]
         :param storage: Storage object to access training data
         :type storage: Storage
-        :param workflow: Workflow object for job management
-        :type workflow: Workflow
+        :param scheduler: Scheduler object for job management
+        :type scheduler: Scheduler
         :param energy_weight: Weight for energy terms in the loss function
         :type energy_weight: float
         :param force_weight: Weight for force terms in the loss function
@@ -286,7 +286,7 @@ class Potential(Recorder, ABC):
         self,
         dataset_list: list[str],
         storage: Storage,
-        workflow: Workflow,
+        scheduler: Scheduler,
         job_details: dict,
         energy_weight: float = 1.0,
         force_weight: float = 1.0,
@@ -304,8 +304,8 @@ class Potential(Recorder, ABC):
         :type dataset_list: list[str]
         :param storage: Storage object to access training data
         :type storage: Storage
-        :param workflow: Workflow object for job management
-        :type workflow: Workflow
+        :param scheduler: Scheduler object for job management
+        :type scheduler: Scheduler
         :param job_details: information controlling job submission
         :type job_details: dict
         :param energy_weight: Weight for energy terms in the loss function
@@ -333,7 +333,7 @@ class Potential(Recorder, ABC):
     def load_from_submitted_training(
         self,
         calc_id: Union[str, int],
-        workflow: Workflow,
+        scheduler: Scheduler,
     ):
         """
         Load a potential that was trained via a submitted job
