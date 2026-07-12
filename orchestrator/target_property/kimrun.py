@@ -8,7 +8,7 @@ import kim_edn
 from typing import Union, Optional
 from ..storage import Storage
 from ..potential import Potential
-from ..workflow import Workflow
+from ..scheduler import Scheduler
 from ..utils.exceptions import StrayFilesError, TestNotFoundError, \
     KIMRunFlattenError
 from ..utils.isinstance import isinstance_no_import
@@ -99,7 +99,7 @@ class KIMRun(TargetProperty):
                            flatten: bool = False,
                            iter_num: int = 0,
                            potential: Optional[Union[str, Potential]] = None,
-                           workflow: Optional[Workflow] = None,
+                           scheduler: Optional[Scheduler] = None,
                            storage: Optional[Storage] = None,
                            **kwargs) -> dict:
         """
@@ -125,9 +125,9 @@ class KIMRun(TargetProperty):
             Potential._save_potential_to_kimkit()) or a string naming
             a potential already installed in KIMKit.
         :type potential: str or Potential
-        :param workflow:
-            the workflow for managing job submission
-        :type workflow: Workflow
+        :param scheduler:
+            the scheduler for managing job submission
+        :type scheduler: Scheduler
         :returns:
             dictionary with None for the property_std, calculation id as the
             calc_ids, and a list of query results for the
@@ -142,8 +142,8 @@ class KIMRun(TargetProperty):
             1-D numpy array of floats.
         :rtype: dict
         """
-        if workflow is None:
-            workflow = self.default_wf
+        if scheduler is None:
+            scheduler = self.default_scheduler
 
         if not isinstance(get_test_result_args, list):
             get_test_result_args = [get_test_result_args]
@@ -212,15 +212,15 @@ class KIMRun(TargetProperty):
 
         if self.outstanding_calc is None:
             # run calculation
-            calc_id = self.conduct_sim(sim_params, workflow, sim_path)
+            calc_id = self.conduct_sim(sim_params, scheduler, sim_path)
             self.outstanding_calc = calc_id
             self.checkpoint_property()
         else:
             calc_id = self.outstanding_calc
         # wait for completion
-        workflow.block_until_completed(calc_id)
+        scheduler.block_until_completed(calc_id)
 
-        work_path = workflow.get_job_path(calc_id)
+        work_path = scheduler.get_job_path(calc_id)
 
         # First, errors. Just a list of tests that errored
         self.logger.info(
@@ -290,7 +290,7 @@ class KIMRun(TargetProperty):
     def conduct_sim(
         self,
         sim_params: dict,
-        workflow: Workflow,
+        scheduler: Scheduler,
         sim_path: PathLike,
     ) -> int:
         """
@@ -300,8 +300,8 @@ class KIMRun(TargetProperty):
             run, including ``test_list``, ``image_path`` and
             ``potential_name``
         :type sim_params: dict
-        :param workflow: the workflow for managing job submission
-        :type workflow: Workflow
+        :param scheduler: the scheduler for managing job submission
+        :type scheduler: Scheduler
         :param sim_path: path name to specify these calculations
         :type sim_path: PathLike
         :returns: calculation ID
@@ -313,7 +313,7 @@ class KIMRun(TargetProperty):
 
         # The reason all the file creation has to happen inside conduct_sim
         # is because I need to find the path using the command below
-        work_path = workflow.make_path(self.__class__.__name__, sim_path)
+        work_path = scheduler.make_path(self.__class__.__name__, sim_path)
 
         # convert path to absolute
         work_path = abspath(work_path)
@@ -375,7 +375,7 @@ class KIMRun(TargetProperty):
         command += ' && '.join(command_lines)
         command += "'"
 
-        calc_id = workflow.submit_job(command, work_path, {
+        calc_id = scheduler.submit_job(command, work_path, {
             'custom_preamble': '',
             'nodes': 1,
             'tasks': 1,
@@ -512,8 +512,14 @@ class KIMRun(TargetProperty):
                              n_calc,
                              modified_params=None,
                              potential=None,
-                             workflow=None):
+                             scheduler=None):
         pass
 
-    def save_configurations(self, calc_ids, dataset_handle, workflow, storage):
+    def save_configurations(
+        self,
+        calc_ids,
+        dataset_handle,
+        scheduler,
+        storage,
+    ):
         pass

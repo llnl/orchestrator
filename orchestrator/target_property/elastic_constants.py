@@ -100,7 +100,7 @@ class ElasticConstants(TargetProperty):
                            iter_num=0,
                            modified_params=None,
                            potential=None,
-                           workflow=None,
+                           scheduler=None,
                            storage=None,
                            **kwargs):
         """
@@ -121,15 +121,15 @@ class ElasticConstants(TargetProperty):
             or a Potential object created by the Orchestrator. We only support
             KIM Potentials at this time.
         :type potential: str or Potential
-        :param workflow: the workflow for managing job submission
-        :type workflow: Workflow
+        :param scheduler: the scheduler for managing job submission
+        :type scheduler: Scheduler
         :returns: dictionary with the elastic constant tensor as the
             property_value, None for the property_std, and the calculation id
             as the calc_ids
         :rtype: array of floats
         """
-        if workflow is None:
-            workflow = self.default_wf
+        if scheduler is None:
+            scheduler = self.default_scheduler
 
         # set/update parameters
         if modified_params is None:
@@ -152,7 +152,7 @@ class ElasticConstants(TargetProperty):
             if hasattr(potential, 'install_potential_in_kim_api') and callable(
                     potential.install_potential_in_kim_api):
                 module_name = self.__class__.__name__
-                save_root = workflow.make_path(
+                save_root = scheduler.make_path(
                     module_name,
                     'potential_for_elastic_constants',
                 )
@@ -181,14 +181,14 @@ class ElasticConstants(TargetProperty):
         }
 
         # run calculation
-        calc_id = self.conduct_sim(sim_params, workflow,
+        calc_id = self.conduct_sim(sim_params, scheduler,
                                    f'elastic_constant/{iter_num}')
 
         # wait for completion
-        workflow.block_until_completed(calc_id)
+        scheduler.block_until_completed(calc_id)
 
         # analyze output
-        calc_path = workflow.get_job_path(calc_id)
+        calc_path = scheduler.get_job_path(calc_id)
         c, s = elastic_compliance(f'{calc_path}/lammps.out')
 
         # error checking output?
@@ -205,7 +205,7 @@ class ElasticConstants(TargetProperty):
         }
         return results_dict
 
-    def conduct_sim(self, sim_params, workflow, sim_path):
+    def conduct_sim(self, sim_params, scheduler, sim_path):
         """
         Perform simulations for the target property calculations
 
@@ -218,8 +218,8 @@ class ElasticConstants(TargetProperty):
             the details that are set in the input script as well as the path
             to the model that should be used
         :type sim_params: dict
-        :param workflow: the workflow for managing job submission
-        :type workflow: Workflow
+        :param scheduler: the scheduler for managing job submission
+        :type scheduler: Scheduler
         :param sim_path: path name to specify these calculations
         :type sim_path: str
         :returns: calculation ID
@@ -234,7 +234,7 @@ class ElasticConstants(TargetProperty):
             sim_path,
             sim_params['model_path'],
             sim_params,
-            workflow=workflow,
+            scheduler=scheduler,
             job_details=job_details,
         )
         return calc_id
@@ -273,8 +273,14 @@ class ElasticConstants(TargetProperty):
                              n_calc,
                              modified_params=None,
                              potential=None,
-                             workflow=None):
+                             scheduler=None):
         pass
 
-    def save_configurations(self, calc_ids, dataset_handle, workflow, storage):
+    def save_configurations(
+        self,
+        calc_ids,
+        dataset_handle,
+        scheduler,
+        storage,
+    ):
         pass

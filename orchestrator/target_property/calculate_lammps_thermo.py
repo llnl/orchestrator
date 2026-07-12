@@ -9,7 +9,7 @@ from typing import Union, Optional, Any
 from ..simulator import simulator_builder
 from ..potential import Potential
 from . import TargetProperty
-from ..workflow import Workflow
+from ..scheduler import Scheduler
 from ..storage import Storage
 from orchestrator.target_property.analysis import AnalyzeLammpsLog
 from ..utils.restart import restarter
@@ -216,7 +216,7 @@ class CalculateLammpsThermo(TargetProperty):
         random_seed_use: bool = False,
         num_sims: int = 1,
         potential: Optional[Union[str, Potential]] = None,
-        workflow: Optional[Workflow] = None,
+        scheduler: Optional[Scheduler] = None,
         storage: Optional[Storage] = None,
         **kwargs,
     ) -> dict[str, Union[float, tuple[list[int], list[int]]]]:
@@ -254,8 +254,8 @@ class CalculateLammpsThermo(TargetProperty):
             either the string of a KIM potential available via the KIM API or
             a Potential object created by the Orchestrator.
         :type potential: str or Potential
-        :param workflow: the workflow for managing job submission
-        :type workflow: Workflow
+        :param scheduler: the scheduler for managing job submission
+        :type scheduler: Scheduler
         :param storage: the storage module
         :type storage: Storage
         :returns: dictionary with the final property values, std based
@@ -273,8 +273,8 @@ class CalculateLammpsThermo(TargetProperty):
             else:
                 property_units = property_units[:len(property_selections)]
 
-        if workflow is None:
-            workflow = self.default_wf
+        if scheduler is None:
+            scheduler = self.default_scheduler
 
         # Determine if using Potential object or forcefield mode
         use_potential_mode = False
@@ -284,7 +284,7 @@ class CalculateLammpsThermo(TargetProperty):
             if hasattr(potential, 'install_potential_in_kim_api') and callable(
                     potential.install_potential_in_kim_api):
                 module_name = self.__class__.__name__
-                save_root = workflow.make_path(
+                save_root = scheduler.make_path(
                     module_name,
                     'potential_for_lammps_thermo',
                 )
@@ -335,7 +335,7 @@ class CalculateLammpsThermo(TargetProperty):
                 for i in range(num_sims):
                     calc_id = self._conduct_sim(
                         sim_params,
-                        workflow,
+                        scheduler,
                         f"{path_type}/run_{i}",
                         model_path,
                         lammps_resources,
@@ -349,10 +349,10 @@ class CalculateLammpsThermo(TargetProperty):
                 self.progress_flag = 'running'
                 self.checkpoint_property()
 
-            workflow.block_until_completed(self.outstanding_ensemble)
+            scheduler.block_until_completed(self.outstanding_ensemble)
 
             for c_id in self.outstanding_ensemble:
-                run_path_ensemble = workflow.get_job_path(c_id)
+                run_path_ensemble = scheduler.get_job_path(c_id)
                 log_ensemble = run_path_ensemble + '/' + 'lammps.out'
 
                 if 'ERROR: Lost atoms:' in open(log_ensemble).read():
@@ -377,7 +377,7 @@ class CalculateLammpsThermo(TargetProperty):
             property_stds = {sel: [] for sel in property_selections}
 
             for c_id in self.outstanding_ensemble:
-                run_path_ensemble = workflow.get_job_path(c_id)
+                run_path_ensemble = scheduler.get_job_path(c_id)
                 log_lammps = run_path_ensemble + '/' + 'lammps.out'
 
                 for sel, unit in zip(property_selections, property_units):
@@ -426,7 +426,7 @@ class CalculateLammpsThermo(TargetProperty):
     def _conduct_sim(
         self,
         sim_params: dict[str, Any],
-        workflow: Workflow,
+        scheduler: Scheduler,
         sim_path: str,
         model_path: str,
         lammps_resources: str,
@@ -440,7 +440,7 @@ class CalculateLammpsThermo(TargetProperty):
         configured at class initialization. When multiple simulations are
         requested, this method is called repeatedly by ``calculate_property``.
         The method fills the LAMMPS input template, submits the job through the
-        provided workflow, and returns a calculation ID that can be used to
+        provided scheduler, and returns a calculation ID that can be used to
         track job completion and retrieve simulation outputs.
 
         The simulation parameters are taken from ``sim_params`` and include
@@ -466,8 +466,8 @@ class CalculateLammpsThermo(TargetProperty):
             ``potential``, ``element``, ``mass``, ``lattice``,
             ``lattice_param``, ``l_x``, ``l_y``, ``l_z``
         :type sim_params: dict
-        :param workflow: the workflow for managing job submission
-        :type workflow: Workflow
+        :param scheduler: the scheduler for managing job submission
+        :type scheduler: Scheduler
         :param sim_path: path to perform simulations for
             simple property calculations
         :type sim_path: str
@@ -631,7 +631,7 @@ class CalculateLammpsThermo(TargetProperty):
             sim_path,
             model_path,
             template_fill,
-            workflow=workflow,
+            scheduler=scheduler,
             job_details=self.job_details,
         )
 
@@ -642,7 +642,7 @@ class CalculateLammpsThermo(TargetProperty):
         n_calc,
         modified_params=None,
         potential=None,
-        workflow=None,
+        scheduler=None,
     ):
         raise NotImplementedError("Use calculate_property() with num_sims > 1 "
                                   "instead to get property statistics.")

@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
 from ..utils.recorder import Recorder
 from typing import Optional, Dict, Any, Union
-from ..workflow.factory import workflow_builder
-from ..workflow import Workflow
+from ..scheduler.factory import scheduler_builder
+from ..scheduler import Scheduler
 from ..storage import Storage
 from ..potential import Potential
 
@@ -34,7 +34,7 @@ class TargetProperty(Recorder, ABC):
         self.checkpoint_file = checkpoint_file
         self.checkpoint_name = checkpoint_name
 
-        self.default_wf = workflow_builder.build(
+        self.default_scheduler = scheduler_builder.build(
             'LOCAL',
             {'root_directory': default_root_directory},
         )
@@ -67,7 +67,7 @@ class TargetProperty(Recorder, ABC):
         iter_num: int = 0,
         modified_params: Optional[Dict[str, Any]] = None,
         potential: Optional[Union[str, Potential]] = None,
-        workflow: Optional[Workflow] = None,
+        scheduler: Optional[Scheduler] = None,
         storage: Optional[Storage] = None,
         **kwargs,
     ):
@@ -81,10 +81,10 @@ class TargetProperty(Recorder, ABC):
 
         :param potential: interatomic potential to be used in LAMMPS
         :type potential: str
-        :param workflow: the workflow for managing job submission, if none are
-            supplied, will use the default workflow defined in this class
+        :param scheduler: the scheduler for managing job submission, if none
+            are supplied, will use the default scheduler defined in this class
             |default| ``None``
-        :type workflow: Workflow
+        :type scheduler: Scheduler
         :returns: a dictionary with property output, errors, and calc ids as
             a tuple (different indices can correspond to different calc types)
         :rtype: dict
@@ -95,7 +95,7 @@ class TargetProperty(Recorder, ABC):
     def _conduct_sim(
         self,
         sim_params: Dict[str, Any],
-        workflow: Workflow,
+        scheduler: Scheduler,
         sim_path: str,
     ) -> int:
         """
@@ -108,8 +108,8 @@ class TargetProperty(Recorder, ABC):
 
         :param sim_params: simulation specific parameters
         :type sim_params: dict
-        :param workflow: the workflow for managing job submission
-        :type workflow: Workflow
+        :param scheduler: the scheduler for managing job submission
+        :type scheduler: Scheduler
         :param sim_path: path to perform simulations for
             target property calculations
         :type sim_path: str
@@ -122,7 +122,7 @@ class TargetProperty(Recorder, ABC):
         n_calc: int,
         modified_params: Optional[Dict[str, Any]] = None,
         potential: Optional[Union[str, Potential]] = None,
-        workflow: Optional[Workflow] = None,
+        scheduler: Optional[Scheduler] = None,
     ):
         """
         Calculate a target property with mean and standard deviation
@@ -136,8 +136,8 @@ class TargetProperty(Recorder, ABC):
         :type n_calc: int
         :param potential: interatomic potential to be used in LAMMPS
         :type potential: str
-        :param workflow: the workflow for managing job submission
-        :type workflow: Workflow
+        :param scheduler: the scheduler for managing job submission
+        :type scheduler: Scheduler
         :returns: mean and standard deviation of the calculated property
         """
         pass

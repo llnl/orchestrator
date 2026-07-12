@@ -3,7 +3,7 @@ from typing import Any, Optional, Union
 from ase import Atoms
 from ase.io import read
 from .simulator_base import Simulator
-from ..workflow import Workflow
+from ..scheduler import Scheduler
 from ..utils.templates_jinja import render_template_to_file
 from ..utils.data_standard import METADATA_KEY
 from ..utils.input_output import safe_write
@@ -112,7 +112,7 @@ class LAMMPSSimulator(Simulator):
 
         This method formats the run command based on the ``code_path`` internal
         variable set at instantiation of the Simulator, which the
-        :class:`~orchestrator.workflow.workflow_base.Workflow` will execute in
+        :class:`~.scheduler_base.Scheduler` will execute in
         the proper ``run_path``. The args dictionary can be used to pass the
         GPU flag, ``gpu_use``, to format the run command for GPU execution.
 
@@ -161,26 +161,26 @@ class LAMMPSSimulator(Simulator):
         self,
         run_path: str = '',
         calc_id: Union[int, str] = None,
-        workflow: Workflow = None,
+        scheduler: Scheduler = None,
     ) -> list[Atoms]:
         """
         Process LAMMPS output to extract data in a consistent for Storage.
 
         :param run_path: directory where the LAMMPS output file resides.
-            If not provided, will be extracted from the workflow using calc_id.
+            If not provided, will be extracted from the scheduler using calc_id
         :type run_path: str
-        :param calc_id: Calculation ID to look up via workflow.get_job_path().
-            Can be int or str depending on workflow implementation.
+        :param calc_id: Calculation ID to look up via scheduler.get_job_path().
+            Can be int or str depending on scheduler implementation.
         :type calc_id: int or str
-        :param workflow: Workflow object of Orchestrator.
-        :type workflow: Workflow
+        :param scheduler: Scheduler object of Orchestrator.
+        :type scheduler: Scheduler
         :returns: list of ASE Atoms of the configurations and any attached
             properties. Metadata with the configuration source information is
             attached to the METADATA_KEY in the info dict.
         :rtype: Atoms list
         """
         if not run_path:
-            run_path = workflow.get_job_path(calc_id)
+            run_path = scheduler.get_job_path(calc_id)
         output_file = 'dump.lammpstrj'
         full_path = run_path + '/' + output_file
 

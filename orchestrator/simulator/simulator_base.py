@@ -7,8 +7,8 @@ from os.path import basename, join, isdir, isfile
 import shutil
 from typing import Any, Callable, Optional, Union
 from ..storage import Storage
-from ..workflow import Workflow
-from ..workflow.factory import workflow_builder
+from ..scheduler import Scheduler
+from ..scheduler.factory import scheduler_builder
 from ..utils.recorder import Recorder
 from ..utils.input_output import ase_glob_read
 
@@ -47,8 +47,8 @@ class Simulator(Recorder, ABC):
                              'simulator.run()')
         self.input_template = input_template
 
-        #: default workflow to use within the Simulator class
-        self.default_wf = workflow_builder.build(
+        #: default scheduler to use within the Simulator class
+        self.default_scheduler = scheduler_builder.build(
             'LOCAL',
             {'root_directory': './simulator'},
         )
@@ -69,7 +69,7 @@ class Simulator(Recorder, ABC):
         make_config_atoms: Optional[Union[Atoms, list[Atoms]]] = None,
         make_config_seed: Optional[int] = None,
         input_template: Optional[str] = None,
-        workflow: Optional[Workflow] = None,
+        scheduler: Optional[Scheduler] = None,
         job_details: Optional[dict[str, Any]] = None,
     ) -> int:
         """
@@ -80,7 +80,7 @@ class Simulator(Recorder, ABC):
         of `make_config_path`, `make_config_storage`, or `make_config_atoms`
         are set, then the template should construct the simulation box.
 
-        :param path_type: specifier for the workflow path, to differentiate
+        :param path_type: specifier for the scheduler path, to differentiate
             calculation types
         :type path_type: str
         :param simulation_files: files or directories that are necessary for
@@ -119,12 +119,12 @@ class Simulator(Recorder, ABC):
             possibly set at instantiation). Will raise a RuntimeError if
             neither are set.
         :type input_template: str
-        :param workflow: the workflow for managing job submission. If None,
-            uses default workflow |default| ``None``
-        :type workflow: Workflow
+        :param scheduler: the scheduler for managing job submission. If None,
+            uses default scheduler |default| ``None``
+        :type scheduler: Scheduler
         :param job_details: dict that includes any additional parameters for
             running the job (passed to
-            :meth:`~orchestrator.workflow.workflow_base.Workflow.submit_job`)
+            :meth:`~.scheduler_base.Scheduler.submit_job`)
             |default| ``None``
         :type job_details: dict
         :returns: calculation ID
@@ -171,11 +171,11 @@ class Simulator(Recorder, ABC):
                                  'list of Atoms')
 
         module_name = self.__class__.__name__
-        if workflow is None:
-            workflow = self.default_wf
+        if scheduler is None:
+            scheduler = self.default_scheduler
         if job_details is None:
             job_details = {}
-        run_path = workflow.make_path(module_name, path_type)
+        run_path = scheduler.make_path(module_name, path_type)
 
         self._load_simulation_files(run_path, simulation_files)
 
@@ -204,7 +204,8 @@ class Simulator(Recorder, ABC):
             self._external_calculation_setup(run_path)
 
         simulator_command = self._get_run_command(job_details)
-        calc_id = workflow.submit_job(simulator_command, run_path, job_details)
+        calc_id = scheduler.submit_job(simulator_command, run_path,
+                                       job_details)
 
         return calc_id
 
@@ -213,14 +214,14 @@ class Simulator(Recorder, ABC):
         path_ids: Union[list[Union[int, str]], Union[int, str]],
         storage: Storage,
         dataset_handle: Optional[str] = None,
-        workflow: Optional[Any] = None,
+        scheduler: Optional[Any] = None,
     ) -> str:
         """
         save the configurations associated with path_ids to storage
 
         :param path_ids: list of ``calc_ids`` or explicit paths associated with
             simulator jobs. If ``calc_ids`` are supplied, the path is extracted
-            from the :class:`~orchestrator.workflow.workflow_base.JobStatus`.
+            from the :class:`~orchestrator.scheduler.scheduler_base.JobStatus`.
             Otherwise it is taken verbatim as the input.
         :type path_ids: list of int or str
         :param storage: the storage module where the configurations will be
@@ -230,22 +231,22 @@ class Simulator(Recorder, ABC):
             configurations should be saved. If ``None``, then the class default
             (date stamped) is used. |default| ``None``
         :type dataset_handle: str
-        :param workflow: the workflow for managing job submission, if none are
-            supplied, will use the default workflow defined in this class.
-            Should be consistent with the workflow supplied for any run calls.
+        :param scheduler: the scheduler for managing job submission, if none
+            are supplied, will use the default scheduler defined in this class.
+            Should be consistent with the scheduler supplied for any run calls.
             |default| ``None``
-        :type workflow: Workflow
+        :type scheduler: Scheduler
         :returns: handle of the dataset which includes the new configurations
         :rtype: str
         """
         if not isinstance(path_ids, list):
             path_ids = [path_ids]
 
-        if workflow is None:
-            workflow = self.default_wf
+        if scheduler is None:
+            scheduler = self.default_scheduler
 
-        # Use workflow method to resolve calc_ids or paths
-        data_paths, _existing_metadata = workflow.resolve_calc_paths(
+        # Use scheduler method to resolve calc_ids or paths
+        data_paths, _existing_metadata = scheduler.resolve_calc_paths(
             path_ids, allow_paths=True)
 
         self.logger.info((f'Saving {len(data_paths)} '
@@ -418,7 +419,7 @@ class Simulator(Recorder, ABC):
 
         This method formats the run command based on the ``code_path`` internal
         variable set at instantiation of the Simulator, which the
-        :class:`~orchestrator.workflow.workflow_base.Workflow` will execute in
+        :class:`~.scheduler_base.Scheduler` will execute in
         the proper ``run_path``. The args dictionary can be used to pass any
         necessary extra parameters to the specific implementations.
 
@@ -435,19 +436,19 @@ class Simulator(Recorder, ABC):
         self,
         run_path: str = '',
         calc_id: Union[int, str] = None,
-        workflow: Workflow = None,
+        scheduler: Scheduler = None,
     ) -> list[Atoms]:
         """
         Process calculation output to extract data in a consistent format.
 
         :param run_path: directory where the simulator output file resides.
-            If not provided, will be extracted from the workflow using calc_id.
+            If not provided, will be extracted from the scheduler using calc_id
         :type run_path: str
-        :param calc_id: Calculation ID to look up via workflow.get_job_path().
-            Can be int or str depending on workflow implementation.
+        :param calc_id: Calculation ID to look up via scheduler.get_job_path().
+            Can be int or str depending on scheduler implementation.
         :type calc_id: int or str
-        :param workflow: Workflow object of Orchestrator.
-        :type workflow: Workflow
+        :param scheduler: Scheduler object of Orchestrator.
+        :type scheduler: Scheduler
         :returns: list of ASE Atoms of the configurations and any attached
             properties. Metadata with the configuration source information is
             attached to the METADATA_KEY in the info dict.

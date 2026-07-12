@@ -9,7 +9,7 @@ from ..simulator import simulator_builder
 from ..potential import Potential
 from ..utils.exceptions import AnalysisError, DensityOOBError
 from . import TargetProperty
-from ..workflow import Workflow
+from ..scheduler import Scheduler
 from ..storage import Storage
 from orchestrator.target_property.analysis import AnalyzeLammpsLog
 from ..utils.restart import restarter
@@ -173,7 +173,7 @@ class MeltingPoint(TargetProperty):
         iter_num: int = 0,
         modified_params: Optional[Dict[str, Any]] = None,
         potential: Optional[Union[str, Potential]] = None,
-        workflow: Optional[Workflow] = None,
+        scheduler: Optional[Scheduler] = None,
         storage: Optional[Storage] = None,
         **kwargs,
     ) -> Dict[str, Union[float, Tuple[List[int], List[int]]]]:
@@ -223,14 +223,14 @@ class MeltingPoint(TargetProperty):
             provided values, including interatomic potentials, simulation
             temperature and pressure
         :type modified_params: dict
-        :param workflow: the workflow for managing job submission
-        :type workflow: Workflow
+        :param scheduler: the scheduler for managing job submission
+        :type scheduler: Scheduler
         :param potential: interatomic potential to be used in LAMMPS. Can be
             either the string of a KIM potential available via the KIM API or
             a Potential object created by the Orchestrator.
         :type potential: str or Potential
-        :param workflow: the workflow for managing job submission
-        :type workflow: Workflow
+        :param scheduler: the scheduler for managing job submission
+        :type scheduler: Scheduler
         :param storage: the storage module where the configurations will be
             saved (not currently used).
         :type storage: Storage
@@ -243,8 +243,8 @@ class MeltingPoint(TargetProperty):
         # ensure restart is properly read
         self.restart_property()
 
-        if workflow is None:
-            workflow = self.default_wf
+        if scheduler is None:
+            scheduler = self.default_scheduler
 
         if modified_params is not None:
             sim_params['temp'] = modified_params['temp']
@@ -254,7 +254,7 @@ class MeltingPoint(TargetProperty):
             if hasattr(potential, 'install_potential_in_kim_api') and callable(
                     potential.install_potential_in_kim_api):
                 module_name = self.__class__.__name__
-                save_root = workflow.make_path(
+                save_root = scheduler.make_path(
                     module_name,
                     'potential_for_melting_point',
                 )
@@ -334,7 +334,7 @@ class MeltingPoint(TargetProperty):
                         calc_id = self._conduct_sim(
                             model_path,
                             sim_params,
-                            workflow,
+                            scheduler,
                             path_type + '/' + str(iter_num) + '/NPT',
                             random_seed_use=random_seed_use,
                         )
@@ -348,13 +348,13 @@ class MeltingPoint(TargetProperty):
                     self.progress_flag = 'npt'
                     self.checkpoint_property()
 
-                workflow.block_until_completed(self.outstanding_npt)
+                scheduler.block_until_completed(self.outstanding_npt)
 
                 phase_list = []
                 q_list = []
 
                 for c_id in self.outstanding_npt:
-                    run_path_npt = workflow.get_job_path(c_id)
+                    run_path_npt = scheduler.get_job_path(c_id)
                     log_npt = run_path_npt + '/' + 'lammps.out'
 
                     if 'ERROR: Lost atoms:' in open(log_npt).read():
@@ -374,7 +374,7 @@ class MeltingPoint(TargetProperty):
                     return results_dict
 
                 for c_id in self.outstanding_npt:
-                    run_path_npt = workflow.get_job_path(c_id)
+                    run_path_npt = scheduler.get_job_path(c_id)
                     log_msd_npt = run_path_npt + '/' + 'log_msd.dat'
                     q_profile_npt = run_path_npt + '/' + 'q_profile.dat'
 
@@ -467,7 +467,7 @@ class MeltingPoint(TargetProperty):
                 self.outstanding_nph = self._conduct_sim(
                     model_path,
                     sim_params,
-                    workflow,
+                    scheduler,
                     path_type + '/' + str(iter_num) + '/NPH',
                     random_seed_use=random_seed_use,
                 )
@@ -480,9 +480,9 @@ class MeltingPoint(TargetProperty):
                 self.progress_flag = 'nph'
                 self.checkpoint_property()
 
-            workflow.block_until_completed(self.outstanding_nph)
+            scheduler.block_until_completed(self.outstanding_nph)
 
-            run_path_nph = workflow.get_job_path(self.outstanding_nph)
+            run_path_nph = scheduler.get_job_path(self.outstanding_nph)
 
             log_nph = run_path_nph + '/' + 'lammps.out'
 
@@ -567,7 +567,7 @@ class MeltingPoint(TargetProperty):
         self,
         model_path: str,
         sim_params: Dict[str, Any],
-        workflow: Workflow,
+        scheduler: Scheduler,
         sim_path: str,
         random_seed_use: bool = False,
     ) -> Union[int, str]:
@@ -578,7 +578,7 @@ class MeltingPoint(TargetProperty):
         configured at class initialization. When multiple simulations are
         requested, this method is called repeatedly by ``calculate_property``.
         The method fills the LAMMPS input template, submits the job through the
-        provided workflow, and returns a calculation ID that can be used to
+        provided scheduler, and returns a calculation ID that can be used to
         track job completion and retrieve simulation outputs.
 
         Additional parameters used by this method are temp (float, simulation
@@ -604,8 +604,8 @@ class MeltingPoint(TargetProperty):
         :param sim_params: simulation specific parameters containing all
             the parameters mentioned above
         :type sim_params: dict
-        :param workflow: the workflow for managing job submission
-        :type workflow: Workflow
+        :param scheduler: the scheduler for managing job submission
+        :type scheduler: Scheduler
         :param sim_path: path to perform simulations for
             target property calculations
         :type sim_path: str
@@ -698,7 +698,7 @@ class MeltingPoint(TargetProperty):
                 sim_path,
                 model_path,
                 template_fill,
-                workflow=workflow,
+                scheduler=scheduler,
                 job_details=self.npt_job_details,
             )
         elif 'NPH' in sim_path:
@@ -708,7 +708,7 @@ class MeltingPoint(TargetProperty):
                 sim_path,
                 model_path,
                 template_fill,
-                workflow=workflow,
+                scheduler=scheduler,
                 job_details=self.nph_job_details,
             )
         else:
@@ -723,7 +723,7 @@ class MeltingPoint(TargetProperty):
         num_calculations: int = 1,
         modified_params: Optional[Dict[str, Any]] = None,
         potential: Optional[Union[str, Potential]] = None,
-        workflow: Optional[Workflow] = None,
+        scheduler: Optional[Scheduler] = None,
     ):
         """
         Calculate a target property with mean and standard deviation
@@ -742,8 +742,8 @@ class MeltingPoint(TargetProperty):
         :param potential: interatomic potential to be used in LAMMPS
             (not currently used, always None)
         :type potential: str or Potential
-        :param workflow: the workflow for managing job submission
-        :type workflow: Workflow
+        :param scheduler: the scheduler for managing job submission
+        :type scheduler: Scheduler
         :returns: dictionary with the average final temperature that results
             in solid/liquid phases as the property_value, std from the
             num_calculations outputs for the property_std, and a tuple with
@@ -751,8 +751,8 @@ class MeltingPoint(TargetProperty):
             calc_ids
         :rtype: dict
         """
-        if workflow is None:
-            workflow = self.default_wf
+        if scheduler is None:
+            scheduler = self.default_scheduler
 
         # calculate_with_error requires random_seed_use to be True
         random_seed_use = True
@@ -776,7 +776,7 @@ class MeltingPoint(TargetProperty):
                 random_seed_use=random_seed_use,
                 modified_params=None,
                 potential=None,
-                workflow=workflow,
+                scheduler=scheduler,
             )
             melt_temp = results_dict['property_value']
             melt_std = results_dict['property_std']
@@ -828,23 +828,23 @@ class MeltingPoint(TargetProperty):
         calc_ids: Union[int, List[int]],
         storage: Storage,
         dataset_handle: str,
-        workflow: Workflow,
+        scheduler: Scheduler,
     ) -> str:
         """
         save configurations generated by the melting point module
 
         :param calc_ids: single or list of ``calc_ids`` associated with
             simulator jobs. The path is extracted from the
-            :class:`~orchestrator.workflow.workflow_base.JobStatus`.
+            :class:`~orchestrator.scheduler.scheduler_base.JobStatus`.
         :type calc_ids: list of int or int
         :param storage: storage module that hosts the dataset
         :type storage: Storage
         :param dataset_handle: handle for the dataset where configs will be
             stored
         :type dataset_handle: str
-        :param workflow: the workflow that managed job submission for the
+        :param scheduler: the scheduler that managed job submission for the
             provided calc_id
-        :type workflow: Workflow
+        :type scheduler: Scheduler
         :returns: updated dataset_handle including the new configurations
         :rtype: str
         """
@@ -854,7 +854,7 @@ class MeltingPoint(TargetProperty):
             calc_ids,
             storage,
             dataset_handle,
-            workflow,
+            scheduler,
         )
 
     def check_density(
@@ -920,7 +920,7 @@ class MeltingPoint(TargetProperty):
         elements_list: list[str],
         traj_name: Optional[str] = 'dump.lammpstrj',
         calc_ids: Optional[list[int]] = None,
-        workflow: Optional[Workflow] = None,
+        scheduler: Optional[Scheduler] = None,
         in_paths: Optional[list[str]] = None,
     ) -> list[Atoms]:
         """
@@ -941,16 +941,16 @@ class MeltingPoint(TargetProperty):
         :type traj_name: str
         :param calc_ids: list of ``calc_ids`` associated with
             simulator jobs. The path is extracted from the
-            :class:`~orchestrator.workflow.workflow_base.JobStatus`.
+            :class:`~orchestrator.scheduler.scheduler_base.JobStatus`.
             |default| ``None``
         :type calc_ids: list of int
-        :param workflow: the workflow that managed job submission for the
+        :param scheduler: the scheduler that managed job submission for the
             provided calc_id. Required if calc_ids are given. |default|
             ``None``
-        :type workflow: Workflow
+        :type scheduler: Scheduler
         :param in_paths: list of paths that include trajectories to use
             for sampling. This option can be used in case ``calc_ids``
-            are not available. If used, workflow does not need to be
+            are not available. If used, scheduler does not need to be
             provided. |default| ``None``
         :type in_paths: list of str
         :returns: a list of ASE Atoms objects
@@ -965,7 +965,7 @@ class MeltingPoint(TargetProperty):
                 atoms_list.extend(atoms)
         else:
             for calc_id in calc_ids:
-                path = workflow.get_job_path(calc_id)
+                path = scheduler.get_job_path(calc_id)
                 traj = join(path, traj_name)
                 atoms = ase.io.read(traj, index=f'{beg}:{end}:{step}')
                 atoms_list.extend(atoms)
