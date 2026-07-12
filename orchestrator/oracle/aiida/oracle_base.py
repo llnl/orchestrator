@@ -9,7 +9,7 @@ import numpy as np
 from copy import deepcopy
 from ase import Atoms
 
-from ...workflow import Workflow
+from ...scheduler import Scheduler
 from ...storage import Storage
 from ...utils.data_standard import METADATA_KEY
 from ...utils.isinstance import isinstance_no_import
@@ -43,7 +43,7 @@ class AiidaOracle(Oracle):
                  group: str = None,
                  **kwargs: dict):
         """
-        Set variables and initialize the recorder and default workflow.
+        Set variables and initialize the recorder and default scheduler.
 
         :param code_str: Name of the code in the AiiDA database.
         :param workchain: Name of the workchain in AiiDA.
@@ -64,8 +64,8 @@ class AiidaOracle(Oracle):
         self.workchain = workchain
         if self.workchain is None:
             raise KeyError(
-                'The workchain specifying the workflow in the AiiDA framework '
-                'must be provided and is required to instantiate a specific '
+                'The workchain specifying the scheduler in the AiiDA framework'
+                ' must be provided and is required to instantiate a specific '
                 'AiidaOracle.')
         self.clean_workdir = clean_workdir
 
@@ -86,7 +86,7 @@ class AiidaOracle(Oracle):
         path_type: str = None,
         input_args: Union[dict, pathlib.Path, None] = None,
         configs: list[ase.Atoms] = None,
-        workflow=None,
+        scheduler=None,
         job_details=None,
     ) -> list[int]:
         """
@@ -96,22 +96,21 @@ class AiidaOracle(Oracle):
         taking atomic configurations as input and handling the submission of
         calculations to obtain the ground truth data. Configs is a dataset of 1
         or more structures. run() will create independent jobs for
-        each structure using the supplied workflow, with job_details
+        each structure using the supplied scheduler, with job_details
         parameterizing the job submission.
 
-        :param path_type: Specifier for the workflow path, to differentiate
+        :param path_type: Specifier for the scheduler path, to differentiate
             calculation types. Legacy input that will be removed in the future.
         :param input_args: Input arguments to fill out the input file.
         :param configs: List of configurations as ASE atoms to run ground truth
             calculations.
-        :param workflow: The workflow for managing job submission, if none are
-            supplied, will use the default workflow defined in this class
-            |default| ``AiiDAWF``.
+        :param scheduler: The scheduler for managing job submission, if none
+            are supplied, will use the default scheduler defined in this class
+            |default| ``AiiDAScheduler``.
         :param job_details: Dict that includes any additional parameters for
-            running the job (passed to
-            :meth:`~orchestrator.workflow.workflow_base.Workflow.submit_job`)
+            running the job (passed to :meth:`~.Scheduler.submit_job`)
             |default| ``None``
-        :returns: a list of calculation IDs (pks) from the workflow.
+        :returns: a list of calculation IDs (pks) from the scheduler.
         """
 
         module_name = self.__class__.__name__
@@ -142,15 +141,15 @@ class AiidaOracle(Oracle):
         # Get the builder from the workchain
         workchain = self.get_workchain(self.workchain)
 
-        if workflow:
-            if not isinstance_no_import(workflow, 'AiidaWF'):
+        if scheduler:
+            if not isinstance_no_import(scheduler, 'AiidaScheduler'):
                 raise TypeError(
-                    'When using AiiDA type Oracles, the AiidaWF must '
+                    'When using AiiDA type Oracles, the AiidaScheduler must '
                     'be specified.')
             else:
-                self.workflow = workflow
-        elif self.workflow is None:
-            raise RuntimeError('AiiDA run must explicitly provide a workflow')
+                self.scheduler = scheduler
+        elif self.scheduler is None:
+            raise RuntimeError('AiiDA run must explicitly provide a scheduler')
 
         if job_details is None:
             job_details = {}
@@ -173,7 +172,7 @@ class AiidaOracle(Oracle):
             if 'clean_workdir' in dir(builder):
                 builder.clean_workdir = self.clean_workdir
 
-            pk = workflow.submit_job(builder, modified_job_details)
+            pk = scheduler.submit_job(builder, modified_job_details)
             if self.group:
                 calc = load_node(pk)
                 self.group.add_nodes(calc)
@@ -189,7 +188,7 @@ class AiidaOracle(Oracle):
         storage: Storage,
         dataset_name: Optional[str] = None,
         dataset_handle: Optional[str] = None,
-        workflow: Optional[Workflow] = None,
+        scheduler: Optional[Scheduler] = None,
     ) -> str:
         """
         Extract and save computed data to storage
@@ -210,15 +209,16 @@ class AiidaOracle(Oracle):
         :param dataset_handle: The handle for the particular dataset that will
             be modified with additional configurations. If ``None``, then the
             ``dataset_name`` will be used.
-        :param workflow: The workflow for managing job submission. If not
-            specified, will use the default workflow defined in this class.
-            Should be consistent with the workflow supplied for the run calls.
+        :param scheduler: The scheduler for managing job submission. If not
+            specified, will use the default scheduler defined in this class.
+            Should be consistent with the scheduler supplied for the run calls.
             |default| ``None``.
         :returns: dataset handle
         """
 
-        if workflow is None:
-            raise RuntimeError('AiiDA save must explicitly provide a workflow')
+        if scheduler is None:
+            raise RuntimeError(
+                'AiiDA save must explicitly provide a scheduler')
 
         if isinstance(pks, int):
             pks = [pks]
@@ -235,7 +235,7 @@ class AiidaOracle(Oracle):
         # parsed data is a list of atoms object from the Oracle and input
         # parameters that include code specific and universal values.
         configs, parameters = self.data_from_calc_ids(calc_ids=pks,
-                                                      workflow=workflow)
+                                                      scheduler=scheduler)
 
         current_date = datetime.today().strftime('%Y-%m-%d')
         dataset_metadata = {
@@ -330,8 +330,8 @@ class AiidaOracle(Oracle):
 
     def get_workchain(self, workchain: str) -> WorkChain:
         """
-        Retrieve the specified workchain for the AiiDA workflow.
-        :param workchain: Name of the workflow for the specified code.
+        Retrieve the specified workchain for the AiiDA scheduler.
+        :param workchain: Name of the scheduler for the specified code.
 
         :returns: Workchain object from AiiDA.
         """
@@ -405,26 +405,26 @@ class AiidaOracle(Oracle):
 
         if computer.transport_type == 'core.local':
             resources['tot_num_mpiprocs'] = job_details.get(
-                'tasks', self.workflow.default_tasks)
+                'tasks', self.scheduler.default_tasks)
             options['resources'] = resources
 
         else:
-            options['account'] = job_details.get('account',
-                                                 self.workflow.default_account)
+            options['account'] = job_details.get(
+                'account', self.scheduler.default_account)
             options['queue_name'] = job_details.get(
-                'queue', self.workflow.default_queue)
+                'queue', self.scheduler.default_queue)
             if extra_args:
                 options['append_text'] = extra_args.get('preamble', '')
                 options['prepend_text'] = extra_args.get('postamble', '')
 
             resources['num_machines'] = job_details.get(
-                'nodes', self.workflow.default_nodes)
+                'nodes', self.scheduler.default_nodes)
             resources['tot_num_mpiprocs'] = job_details.get(
-                'tasks', self.workflow.default_tasks)
+                'tasks', self.scheduler.default_tasks)
             options['max_wallclock_seconds'] = job_details.get(
-                'walltime', self.workflow.default_walltime) * 60
+                'walltime', self.scheduler.default_walltime) * 60
             options['resources'] = resources
-            options['qos'] = job_details.get('qos', self.workflow.default_qos)
+            options['qos'] = job_details.get('qos', self.scheduler.default_qos)
 
         return options
 
