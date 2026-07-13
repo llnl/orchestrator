@@ -1,39 +1,69 @@
+"""Analysis utilities for potential evaluation and visualization."""
+
+from typing import Optional, Union
+from os.path import exists
+
 import numpy as np
+import matplotlib
+import matplotlib.pyplot as plt
+import matplotlib.ticker as tck
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+from scipy.stats import gaussian_kde
+from ase.build import bulk
+from kimkit.src import mongodb
+
 from orchestrator.utils.setup_input import init_and_validate_module_type
 from orchestrator.potential import Potential
 from orchestrator.storage import Storage
 from orchestrator.scheduler import Scheduler, scheduler_builder
 from orchestrator.target_property.analysis import AnalyzeLammpsLog
-from orchestrator.oracle.factory import oracle_builder
 from orchestrator.utils.data_standard import ENERGY_KEY, FORCES_KEY, SELECTION_MASK_KEY
-from orchestrator.utils.isinstance import isinstance_no_import
-from kimkit.src import mongodb
-from typing import Optional
-from scipy.stats import gaussian_kde
-from os import system
-from os.path import exists
-from ase.build import bulk
-import matplotlib
-import matplotlib.pyplot as plt
-import matplotlib.ticker as tck
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
-analysis_scheduler = scheduler_builder.build(
-    'LOCAL', {
+# Default scheduler for analysis outputs
+analysis_scheduler: Scheduler = scheduler_builder.build(
+    'LOCAL',
+    {
         'root_directory': './analysis_output/',
-        'checkpoint_name': 'analysis_scheduler'
-    })
+        'checkpoint_name': 'analysis_scheduler',
+    },
+)
 
 
 def plot_training_parity(
-    dataset_handles,
-    potential,
-    storage,
-    save_path=None,
-    use_energy_mask_color=False,
-    use_force_mask_color=False,
-):
+    dataset_handles: Union[str, list[str]],
+    potential: Potential,
+    storage: Storage,
+    save_path: Optional[str] = None,
+    use_energy_mask_color: bool = False,
+    use_force_mask_color: bool = False,
+) -> tuple[str, list[int]]:
     """
+    Generate parity plots comparing potential predictions to ground truth.
+
+    Creates energy and force parity plots to visualize model accuracy on
+    training data. Optionally colors points by whether they were fully or
+    partially included in training.
+
+    :param dataset_handles: Single dataset handle string or list of handles to
+        plot.
+    :type dataset_handles: Union[str, list[str]]
+    :param potential: Potential object to evaluate predictions.
+    :type potential: Potential
+    :param storage: Storage object containing the dataset configurations.
+    :type storage: Storage
+    :param save_path: Directory path to save output plots and data. If None,
+        uses default location under
+        ./analysis_output/Analysis/training_parity/.
+    :type save_path: Optional[str]
+    :param use_energy_mask_color: If True, colors energy points by whether all
+        atoms were included in training (red) vs. partial (blue).
+    :type use_energy_mask_color: bool
+    :param use_force_mask_color: If True, colors force points by selection mask
+        (red=included, blue=excluded).
+    :type use_force_mask_color: bool
+    :returns: Tuple containing RMSE string with energy and force errors, and
+        list of configuration indices with large RMSE (>5 eV/A).
+    :rtype: tuple[str, list[int]]
     """
     if not isinstance(dataset_handles, list):
         dataset_handles = [dataset_handles]
@@ -117,13 +147,33 @@ def plot_training_parity(
 
 
 def _save_and_plot_training_parity(
-    training_path,
-    energies,
-    forces,
-    energy_colors=None,
-    force_colors=None,
-):
+    training_path: str,
+    energies: np.ndarray,
+    forces: np.ndarray,
+    energy_colors: Optional[list[str]] = None,
+    force_colors: Optional[list[str]] = None,
+) -> str:
     """
+    Save data and generate parity plots for energy and forces.
+
+    Internal helper function that creates scatter plots comparing ground truth
+    to model predictions, computes RMSE, and saves raw data.
+
+    :param training_path: Directory path to save outputs.
+    :type training_path: str
+    :param energies: Array of shape (N, 2) with ground truth and model
+        energies per atom.
+    :type energies: np.ndarray
+    :param forces: Array of shape (N, 6) with ground truth (x,y,z) and model
+        (x,y,z) forces.
+    :type forces: np.ndarray
+    :param energy_colors: Optional list of colors for energy scatter points.
+    :type energy_colors: Optional[list[str]]
+    :param force_colors: Optional list of colors for force scatter points.
+    :type force_colors: Optional[list[str]]
+    :returns: Formatted string containing RMSE values for energy and all force
+        components.
+    :rtype: str
     """
     energy_header = ('energy_per_atom_ground_truth[eV/atom] '
                      'energy_per_atom_model[eV/atom]')
@@ -144,7 +194,7 @@ def _save_and_plot_training_parity(
         header=force_header,
     )
     # generate basic parity plot for energy
-    fig, ax = plt.subplots()
+    _, ax = plt.subplots()
     if energy_colors:
         ax.scatter(
             energies[:, 0],
@@ -179,7 +229,7 @@ def _save_and_plot_training_parity(
     )
     plt.close()
     # ...and for forces
-    fig, ax = plt.subplots(figsize=(12, 4), ncols=3)
+    _, ax = plt.subplots(figsize=(12, 4), ncols=3)
     for force_dir, label in enumerate(['fx', 'fy', 'fz']):
         if force_colors:
             ax[force_dir].scatter(
@@ -236,27 +286,57 @@ def _save_and_plot_training_parity(
     return rmse_string
 
 
-def _compute_rmse(fit, ground_truth):
+def _compute_rmse(
+    fit: np.ndarray,
+    ground_truth: np.ndarray,
+) -> tuple[float, bool]:
     """
+    Compute root mean square error between predictions and ground truth.
+
+    :param fit: Array of predicted values.
+    :type fit: np.ndarray
+    :param ground_truth: Array of ground truth values.
+    :type ground_truth: np.ndarray
+    :returns: Tuple containing RMSE value (or -10000 if array lengths don't
+        match) and boolean indicating if RMSE exceeds threshold of 5.0.
+    :rtype: tuple[float, bool]
     """
-    num_samples = len(fit)
-    if num_samples != len(ground_truth):
-        return -10000
-    rmse = 0
-    for fit_data, ground_truth_data in zip(fit, ground_truth):
-        rmse += (ground_truth_data - fit_data) * (ground_truth_data - fit_data)
-    rmse = np.sqrt(rmse / num_samples)
-    large_rmse = True if rmse > 5 else False
+    if len(fit) != len(ground_truth):
+        return -10000.0, False
+
+    rmse = np.sqrt(np.mean((ground_truth - fit)**2))
+    large_rmse = rmse > 5.0
     return rmse, large_rmse
 
 
 def plot_cold_curve_potential(
-    potential,
-    crystal='sc',
-    min_dist=1.5,
-    max_dist=5,
-    save_path: str = None,
-):
+    potential: Potential,
+    crystal: str = 'sc',
+    min_dist: float = 1.5,
+    max_dist: float = 5,
+    save_path: Optional[str] = None,
+) -> None:
+    """
+    Plot cold curve (energy vs. lattice parameter) for a potential.
+
+    Generates energy vs. lattice parameter curves by evaluating the potential
+    on perfect crystal structures at varying lattice constants.
+
+    :param potential: Potential object to evaluate.
+    :type potential: Potential
+    :param crystal: Crystal structure type. Options: 'sc', 'fcc', 'bcc',
+        'diamond'.
+    :type crystal: str
+    :param min_dist: Minimum nearest-neighbor distance in Angstroms.
+    :type min_dist: float
+    :param max_dist: Maximum nearest-neighbor distance in Angstroms.
+    :type max_dist: float
+    :param save_path: Directory to save plot and data. If None, uses default
+        location under ./analysis_output/Analysis/cold_curve_plots/.
+    :type save_path: Optional[str]
+    :raises KeyError: If crystal type is not supported or potential has
+        multiple species.
+    """
 
     if isinstance(potential.species, list):
         if len(potential.species) == 1:
@@ -297,7 +377,7 @@ def plot_cold_curve_potential(
                 return_stress=False,
             )
             energies.append(energy)
-        except Exception as e:
+        except Exception:
             problem_idxs.append(i)
     energies = np.array(energies)
     # couldn't get energies for these values, remove from lists
@@ -342,31 +422,39 @@ def plot_cold_curve_potential(
 
 
 def plot_cold_curve_running_kimrun(
-        potential_kim_id: str,
-        species: list[str],
-        crystal: str = 'sc',
-        save_path: str = None,
-        scheduler: Optional[Scheduler] = None) -> np.ndarray:
+    potential_kim_id: str,
+    species: list[str],
+    crystal: str = 'sc',
+    save_path: Optional[str] = None,
+    scheduler: Optional[Scheduler] = None,
+) -> np.ndarray:
     """
-    Plot a cold curve using the potentials and Test IDs from OpenKIM.org
+    Plot cold curve using OpenKIM.org potential and test calculations.
 
-    :param potential_kim_id: kim_id of potential as from OpenKIM.org,
-        e.g., 'Sim_LAMMPS_MEAM_Lenosky_2017_W__SM_631352869360_000'
+    Executes KIM test to compute cohesive energy vs. lattice constant and
+    generates a cold curve plot with inset zoom. Queries OpenKIM database for
+    appropriate test IDs based on crystal structure and species.
+
+    :param potential_kim_id: OpenKIM potential identifier, e.g.,
+        'Sim_LAMMPS_MEAM_Lenosky_2017_W__SM_631352869360_000'.
     :type potential_kim_id: str
-    :param species: name of the chemical species. Currently it works with
-        only one species
-    :type species: list of strings
-    :param crystal: crystal structure, 'sc', 'fcc', 'bcc', or 'diamond'
+    :param species: List containing chemical species symbol. Currently supports
+        single-element systems only.
+    :type species: list[str]
+    :param crystal: Crystal structure type. Options: 'sc', 'fcc', 'bcc',
+        'diamond'.
     :type crystal: str
-    :param save_path: location to save the output figure and data files.
-    :type save_path: str
-    :param scheduler: optional parameter to define where the cold curve plot
-        and data file will be stored. The default value is None, and then it
-        creates the output files under ./Analysis/cold_curve_plots/
-    :type scheduler: Scheduler
-    :return: A NumPy array containing the processed cold curve data,
-        (lattice parameter a, potential energy E).
+    :param save_path: Directory to save plot and data. If None, uses default
+        location under ./analysis_output/Analysis/cold_curve_plots/.
+    :type save_path: Optional[str]
+    :param scheduler: Scheduler object for managing calculation paths. If
+        None, uses default analysis scheduler.
+    :type scheduler: Optional[Scheduler]
+    :returns: Array of shape (N, 2) containing [lattice_parameter, energy]
+        pairs.
     :rtype: np.ndarray
+    :raises KeyError: If crystal type is unsupported, species not in
+        potential, or multiple species provided.
     """
 
     if crystal not in ['sc', 'fcc', 'bcc', 'diamond']:
@@ -436,7 +524,7 @@ def plot_cold_curve_running_kimrun(
     e = value[0][0][1]
 
     # Plot a cold curve
-    fig, ax = plt.subplots()
+    _, ax = plt.subplots()
     ax.plot(a, e, marker='o', ls='-')
     ax.set_ylim([3 * np.median(e), 0])
     axins = inset_axes(ax, width='40%', height='45%', loc=4, borderpad=2)
@@ -472,15 +560,20 @@ def plot_cold_curve_running_kimrun(
     return np.array([a, e]).T
 
 
-def cosine_sim(a, b):
+def cosine_sim(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     """
-    Compute the cosine similarity between two sets of (N, 3) arrays.
-    Note that the function adds a small constant (`np.finfo(float).eps`)
-    to both the numerator and denominator to prevent division by zero.
-    :param a: numpy.ndarray of shape (N, 3)
-    :param b: numpy.ndarray of shape (N, 3)
-    :returns: numpy.ndarray of shape (N, ) containing the cosine similarity
-        values for each pair of vectors in `a` and `b`.
+    Compute cosine similarity between pairs of 3D vectors.
+
+    Calculates dot(a, b) / (|a| * |b|) for each vector pair. Adds epsilon
+    to numerator and denominator to prevent division by zero.
+
+    :param a: Array of shape (N, 3) containing N vectors.
+    :type a: np.ndarray
+    :param b: Array of shape (N, 3) containing N vectors.
+    :type b: np.ndarray
+    :returns: Array of shape (N,) containing cosine similarity values in range
+        [-1, 1].
+    :rtype: np.ndarray
     """
 
     dot_prod = np.sum((a * b), axis=1)
@@ -491,35 +584,34 @@ def cosine_sim(a, b):
 
 
 def plot_force_magnitude_vs_force_angle_errors(
-        potential: Potential,
-        dataset_id: str,
-        storage: Storage,
-        save_path: str = None,
-        verbose: bool = False) -> np.ndarray:
+    potential: Potential,
+    dataset_id: str,
+    storage: Storage,
+    save_path: Optional[str] = None,
+    verbose: bool = False,
+) -> np.ndarray:
     """
-    This function computes the forces on individual atom in the configurations
-    obtained from the dataset from Storage using the provided potential,
-    (x, y, z), and compares them to ground truth DFT forces read from the
-    Storage, (x_gt, y_gt, z_gt). The angle difference between (x, y, z) and
-    (x_gt, y_gt, z_gt) is plotted versus their magnitude difference.
-    Each data point is colored by either the magnitude of ground truth force
-    or the probability density of the data.
+    Plot force prediction errors as angle vs. magnitude difference.
 
-    :param potential: interatomic potential to be used for force computing.
-        It is a Potential object created by the Orchestrator.
+    Compares forces computed by the potential to ground truth DFT forces from
+    storage. Generates scatter plots showing the angular difference (theta)
+    between force vectors vs. their magnitude difference (delta), colored by
+    either ground truth force magnitude or data density.
+
+    :param potential: Potential object for computing forces.
     :type potential: Potential
-    :param dataset_id: name of the dataset stored under Storage.
+    :param dataset_id: Dataset identifier in storage.
     :type dataset_id: str
-    :param storage: location of the dataset. It is a Storage object created
-        by the Orchestrator.
+    :param storage: Storage object containing configurations with ground truth
+        forces.
     :type storage: Storage
-    :param save_path: location to save the output figure and data files.
-    :type save_path: str
-    :param verbose: determines if detailed output should be displayed.
-        Defaults to False.
+    :param save_path: Directory to save plot and data. If None, uses default
+        location under ./analysis_output/Analysis/force_error_plots/.
+    :type save_path: Optional[str]
+    :param verbose: If True, prints detailed progress information.
     :type verbose: bool
-    :return: A NumPy array containing the processed force error data,
-        (angle_between_forces, force_magnitude_difference).
+    :returns: Array of shape (N, 2) containing [angle_between_forces,
+        magnitude_difference] for each atom in the dataset.
     :rtype: np.ndarray
     """
 
@@ -556,33 +648,26 @@ def plot_force_magnitude_vs_force_angle_errors(
 
 def plot_force_magnitude_vs_force_angle_errors_from_file(
     force_file: str,
-    save_path: str = None,
+    save_path: Optional[str] = None,
     verbose: bool = False,
-):
+) -> np.ndarray:
     """
-    This function computes the forces on individual atom in the configurations
-    obtained from the dataset from Storage using the provided potential,
-    (x, y, z), and compares them to ground truth DFT forces read from the
-    Storage, (x_gt, y_gt, z_gt). The angle difference between (x, y, z) and
-    (x_gt, y_gt, z_gt) is plotted versus their magnitude difference.
-    Each data point is colored by either the magnitude of ground truth force
-    or the probability density of the data.
+    Plot force prediction errors from pre-computed force file.
 
-    :param potential: interatomic potential to be used for force computing.
-        It is a Potential object created by the Orchestrator.
-    :type potential: Potential
-    :param dataset_id: name of the dataset stored under Storage.
-    :type dataset_id: str
-    :param storage: location of the dataset. It is a Storage object created
-        by the Orchestrator.
-    :type storage: Storage
-    :param save_path: location to save the output figure and data files.
-    :type save_path: str
-    :param verbose: determines if detailed output should be displayed.
-        Defaults to False.
+    Similar to plot_force_magnitude_vs_force_angle_errors but reads forces from
+    a data file instead of computing them. Expects file with 6 columns:
+    ground_truth_x, ground_truth_y, ground_truth_z, model_x, model_y, model_z.
+
+    :param force_file: Path to file containing force data (6 columns: GT
+        forces then model forces).
+    :type force_file: str
+    :param save_path: Directory to save plot and data. If None, uses default
+        location under ./analysis_output/Analysis/force_error_plots/.
+    :type save_path: Optional[str]
+    :param verbose: If True, prints detailed progress information.
     :type verbose: bool
-    :return: A NumPy array containing the processed force error data,
-        (angle_between_forces, force_magnitude_difference).
+    :returns: Array of shape (N, 2) containing [angle_between_forces,
+        magnitude_difference] for each force vector pair.
     :rtype: np.ndarray
     """
 
@@ -605,10 +690,28 @@ def plot_force_magnitude_vs_force_angle_errors_from_file(
 
 
 def _make_force_magnitude_vs_force_angle_errors_plot(
-    gt_forces,
-    potential_forces,
-    save_path,
-):
+    gt_forces: np.ndarray,
+    potential_forces: np.ndarray,
+    save_path: Optional[str],
+) -> tuple[np.ndarray, str]:
+    """
+    Internal helper to generate force error scatter plots.
+
+    Creates two-panel figure showing angular vs. magnitude errors, with one
+    panel colored by ground truth force magnitude and the other by probability
+    density.
+
+    :param gt_forces: Ground truth forces of shape (N, 3).
+    :type gt_forces: np.ndarray
+    :param potential_forces: Model-predicted forces of shape (N, 3).
+    :type potential_forces: np.ndarray
+    :param save_path: Directory to save outputs. If None, uses default
+        location.
+    :type save_path: Optional[str]
+    :returns: Tuple containing array of shape (N, 2) with [angles,
+        magnitude_differences] and string path where outputs were saved.
+    :rtype: tuple[np.ndarray, str]
+    """
     # plot the force errors as a function of force angles
     fig, axes = plt.subplots(
         1,
@@ -738,7 +841,24 @@ def _make_force_magnitude_vs_force_angle_errors_plot(
     return np.array([angles, magnitude_diff]).T, save_path
 
 
-def plot_msd_from_melting(simulation_ids, scheduler):
+def plot_msd_from_melting(
+    simulation_ids: list[str],
+    scheduler: Scheduler,
+) -> list[tuple[float, float]]:
+    """
+    Plot mean squared displacement (MSD) from melting simulations.
+
+    Extracts MSD data from LAMMPS log files and generates plots showing MSD vs.
+    MD timestep for each simulation.
+
+    :param simulation_ids: List of simulation job identifiers.
+    :type simulation_ids: list[str]
+    :param scheduler: Scheduler object for retrieving job paths.
+    :type scheduler: Scheduler
+    :returns: List of (avg_temperature, std_temperature) tuples for each
+        simulation that had valid MSD data.
+    :rtype: list[tuple[float, float]]
+    """
     matplotlib.use('Agg')
     temps = []
     for simulation_id in simulation_ids:
@@ -750,7 +870,7 @@ def plot_msd_from_melting(simulation_ids, scheduler):
             data = np.column_stack((steps, msd))
             np.savetxt(f'{calc_path}/msd.dat', data, fmt=['%i', '%.6f'])
             # generate msd plot
-            fig, ax = plt.subplots()
+            _, ax = plt.subplots()
             ax.plot(data[:, 0], data[:, 1], marker='o', ls='-')
             ax.set_xlabel(r'MD Step')
             ax.set_ylabel(r'MSD $\AA^2$')
@@ -770,7 +890,26 @@ def plot_msd_from_melting(simulation_ids, scheduler):
     return temps
 
 
-def plot_q_from_melting(simulation_ids, scheduler, msd_also=False):
+def plot_q_from_melting(
+    simulation_ids: list[str],
+    scheduler: Scheduler,
+    msd_also: bool = False,
+) -> None:
+    """
+    Plot Steinhardt order parameter (q) profiles from melting simulations.
+
+    Reads q_profile.dat files containing order parameter values across cell
+    dimensions at multiple timesteps and generates rainbow-colored line plots
+    showing evolution.
+
+    :param simulation_ids: List of simulation job identifiers.
+    :type simulation_ids: list[str]
+    :param scheduler: Scheduler object for retrieving job paths.
+    :type scheduler: Scheduler
+    :param msd_also: If True, also generates MSD plots and includes temperature
+        information in the q parameter plot titles.
+    :type msd_also: bool
+    """
     matplotlib.use('Agg')
     for simulation_id in simulation_ids:
         if msd_also:
@@ -821,7 +960,7 @@ def plot_q_from_melting(simulation_ids, scheduler, msd_also=False):
                 header=header,
             )
             # generate q plot
-            fig, ax = plt.subplots()
+            _, ax = plt.subplots()
             colors = plt.cm.rainbow(np.linspace(0, 1, len(steps)))
             label_indices = [
                 int(len(steps) * frac) for frac in [0, .25, .5, .75, 1]
