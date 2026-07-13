@@ -14,8 +14,8 @@ TEST_Si_DATASET_HANDLE="DS_XXXXXXXXXXXX_0"
 TEST_Ta_DATASET_HANDLE="DS_XXXXXXXXXXXX_0"
 STORAGE_CREDENTIAL_PATH="/PATH/TO/unittests_colabfit_credentials.json"
 
-ASYNCH_WORKFLOW="SLURM"
-ASYNCH_WORKFLOW_HYBRID="SLURMTOLSF"
+ASYNCH_SCHEDULER="SLURM"
+ASYNCH_SCHEDULER_HYBRID="FLUX"
 CHIMES_LSQ="/PATH/TO/chimes_lsq/build/chimes_lsq"
 CHIMES_LSQ_PY="/PATH/TO/chimes_lsq/src/chimes_lsq.py"
 HPC_ACCOUNT='ACCOUNT_STRING'
@@ -23,36 +23,32 @@ HPC_QUEUE='QUEUE_NAME'
 KIM_API='kim-api-collections-management'
 LAMMPS_PATH='/PATH/TO/lmp'
 LAMMPS_PATH_HYBRID='/PATH/TO/ALTERNATE/lmp'
-MELTING_NODES=1
-MELTING_TASKS=112
-MELTING_NODES_HYBRID=1
-MELTING_TASKS_HYBRID=1
+NODES=1
+TASKS=112
+NODES_HYBRID=1
+TASKS_HYBRID=1
 PREAMBLE_HYBRID='ENVIRONMENT SETUP FOR ALTERNATE MACHINE'
 QE_PATH='/PATH/TO/pw.x'
 USE_GPU="false"
 USE_GPU_HYBRID="true"
-LRUN_PATH='PATH/TO/lrun'
-JSRUN_PATH='PATH/TO/jsrun'
-LSF_PROFILE_PATH='PATH/TO/profile.lsf'
-LSF_MACHINE_NAME='NAME OF THE LSF MACHINE'
+FLUX_MACHINE_NAME='NAME_OF_FLUX_MACHINE'
 
 # read paths
 INSTALL_PATH=${1}
-# all, descriptor, oracle, simulator, storage, target_property,
-# trainer
+# all, descriptor, oracle, potential, simulator, storage, target_property
 TESTS=${2}
 TEST_PATH=$(pwd)
 
 if [[ ${#} -ne 2 || ${INSTALL_PATH} == "-h" ]]; then
     echo "Usage: setup_tests.zsh [path to install tests] [test type]"
     echo "    test type should be one of:"
-    echo "      all, descriptor, oracle, score, simulator, storage, target_property, trainer"
+    echo "      all, descriptor, oracle, potential, score, simulator, storage, target_property"
     exit
 fi
 
-if [[ ! "${TESTS}" =~ ^(all|descriptor|oracle|score|simulator|storage|target_property|trainer)$ ]]; then
+if [[ ! "${TESTS}" =~ ^(all|descriptor|oracle|potential|score|simulator|storage|target_property)$ ]]; then
     echo "The third argument must be one of:"
-    echo "    all, descriptor, oracle, simulator, storage, target_property, trainer"
+    echo "    all, descriptor, oracle, potential, simulator, storage, target_property"
     exit
 fi
 
@@ -109,8 +105,8 @@ copy_dir_content() {
 substitute_inputs() {
     escaped_PREAMBLE_HYBRID=$(sed 's/[\\$&\/]/\\&/g; s/\n/\\n/g' <<< "$PREAMBLE_HYBRID")
     find ./ -name "*.json" | xargs sed -i.bak \
-            -e "s|<ASYNCH_WORKFLOW>|${ASYNCH_WORKFLOW}|g" \
-            -e "s|<ASYNCH_WORKFLOW_HYBRID>|${ASYNCH_WORKFLOW_HYBRID}|g" \
+            -e "s|<ASYNCH_SCHEDULER>|${ASYNCH_SCHEDULER}|g" \
+            -e "s|<ASYNCH_SCHEDULER_HYBRID>|${ASYNCH_SCHEDULER_HYBRID}|g" \
             -e "s|<CHIMES_LSQ>|${CHIMES_LSQ}|g" \
             -e "s|<CHIMES_LSQ_PY>|${CHIMES_LSQ_PY}|g" \
             -e "s|<HPC_ACCOUNT>|${HPC_ACCOUNT}|g" \
@@ -119,10 +115,10 @@ substitute_inputs() {
             -e "s|<KIM_API>|${KIM_API}|g" \
             -e "s|<LAMMPS_PATH>|${LAMMPS_PATH}|g" \
 	        -e "s|<LAMMPS_PATH_HYBRID>|${LAMMPS_PATH_HYBRID}|g" \
-            -e "s|<MELTING_NODES>|${MELTING_NODES}|g" \
-            -e "s|<MELTING_TASKS>|${MELTING_TASKS}|g" \
-            -e "s|<MELTING_NODES_HYBRID>|${MELTING_NODES_HYBRID}|g" \
-            -e "s|<MELTING_TASKS_HYBRID>|${MELTING_TASKS_HYBRID}|g" \
+            -e "s|<NODES>|${NODES}|g" \
+            -e "s|<TASKS>|${TASKS}|g" \
+            -e "s|<NODES_HYBRID>|${NODES_HYBRID}|g" \
+            -e "s|<TASKS_HYBRID>|${TASKS_HYBRID}|g" \
             -e "s|<POTENTIAL_DIR>|${TEST_PATH}/shared_inputs/potential/|g" \
             -e "s|<PREAMBLE_HYBRID>|${escaped_PREAMBLE_HYBRID}|g" \
             -e "s|<QE_PATH>|${QE_PATH}|g" \
@@ -130,11 +126,7 @@ substitute_inputs() {
             -e "s|<TEST_Si_DATASET_HANDLE>|${TEST_Si_DATASET_HANDLE}|g" \
 	        -e "s|<TEST_Ta_DATASET_HANDLE>|${TEST_Ta_DATASET_HANDLE}|g" \
 	        -e "s|<USE_GPU>|${USE_GPU}|g" \
-	    -e "s|<USE_GPU_HYBRID>|${USE_GPU_HYBRID}|g" \
-            -e "s|<LRUN_PATH>|${LRUN_PATH}|g" \
-            -e "s|<JSRUN_PATH>|${JSRUN_PATH}|g" \
-            -e "s|<LSF_PROFILE_PATH>|${LSF_PROFILE_PATH}|g" \
-            -e "s|<LSF_MACHINE_NAME>|${LSF_MACHINE_NAME}|g"
+	    -e "s|<USE_GPU_HYBRID>|${USE_GPU_HYBRID}|g"
 	rm *.bak
 }
 
@@ -234,10 +226,10 @@ if [[ ${TESTS} == "target_property" || ${TESTS} == "all" ]]; then
 fi
 
 # trainer (and potential) tests
-if [[ ${TESTS} == "trainer" || ${TESTS} == "all" ]]; then
-    copy_dir_content trainer
+if [[ ${TESTS} == "potential" || ${TESTS} == "all" ]]; then
+    copy_dir_content potential
     # specify machine specific params in input files
-    cd ${INSTALL_PATH}/trainer/test_inputs
+    cd ${INSTALL_PATH}/potential/test_inputs
     substitute_inputs
     # return to starting point
     cd ${TEST_PATH}
