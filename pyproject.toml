@@ -25,10 +25,11 @@ authors = [
     {name = "Ellad Tadmor", email="tadmor@umn.edu"},
     {name = "Vince Lordi", email="lordi2@llnl.gov"},
 ]
-version = "0.0.6"
+version = "0.0.7"
 requires-python = ">= 3.10"
 dependencies = [
     "ase==3.25.0",
+    "boto3",
     "colabfit-kit>=0.0.10",
     "fitsnap3 @ git+https://github.com/FitSNAP/FitSNAP.git",
     "furo",
@@ -36,12 +37,11 @@ dependencies = [
     "kim-edn==1.4.1",
     "kimpy==2.1.3",
     "kliff @ git+https://github.com/openkim/kliff",
-    "lmdb",
     "pandas==2.2.3",
     "pre-commit",
     "pymatgen",
     "pytest==8.3.5",
-    "quests==2025.09.29",
+    "quests==2026.2.22",
     "scikit-learn==1.6.1",
     "scipy==1.15.2",
     "sphinx",

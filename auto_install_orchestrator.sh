@@ -166,7 +166,7 @@ fi
 
 echo "[INFO] Installing orchestrator (editable) + extras - this step may take ~10 min"
 # install all optional dependencies
-pip install --quiet --no-cache-dir -e "${REPO_DIR}[QUESTS, AIIDA, LTAU, FIMMATCHING]"
+pip install --quiet --no-cache-dir -e "${REPO_DIR}[AIIDA, LTAU, FIMMATCHING]"
 
 echo "[INFO] Orchestrator installation completed at $(date)"
 
