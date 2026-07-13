@@ -1,0 +1,50 @@
+{
+    "target_property": {
+        "target_property_type": "CalculateLammpsThermo",
+        "target_property_args": {
+            "simulator_type": "LAMMPS",
+            "simulator_path": "<LAMMPS_PATH>",
+            "job_details": {
+                "walltime": 10
+            }
+        },
+        "calculate_property_args": {
+            "property_selections": [
+                "Density",
+                "Temp"
+            ],
+            "property_units": [
+                "g/cm^3",
+                "K"
+            ],
+            "path_type": "01_simple_property_test",
+            "lammps_resources": "./lammps_resources",
+            "random_seed_use": true,
+            "num_sims": 3,
+            "sim_params": {
+                "data_file": "lammps_data_mixture_wrap.lmp",
+                "ff_param": "lammps_forcefield_paramlist.lmp",
+                "ff_files": [
+                    "lammps_parameters_covalent.lmp",
+                    "lammps_parameters_pairwise.lmp"
+                ]
+            }
+        }
+    },
+    "scheduler": {
+        "scheduler_type": "<ASYNCH_SCHEDULER>",
+        "scheduler_args": {
+            "root_directory": "./test_simple_property",
+            "queue": "<HPC_QUEUE>",
+            "account": "<HPC_ACCOUNT>",
+            "wait_freq": 120
+        }
+    },
+    "storage": {
+        "storage_type": "LOCAL",
+        "storage_args": {
+            "database_path": "./mixture_storage",
+            "dataset_name": "mixture_test"
+        }
+    }
+}

@@ -9,8 +9,10 @@
                 "NPH": "./templates/nph.in"
             },
             "job_details": {
-                "nodes":<NODES>,
-                "tasks":<TASKS>
+                "gpu_use": false,
+                "synchronous": false,
+                "nodes":<NODES_HYBRID>,
+                "custom_preamble": "flux run -N1 -n4 -x -c12 -o cpu-affinity=off -o gpu-affinity=off"
             },
             "npt_job_details": {
                 "walltime": 7
@@ -65,10 +67,11 @@
         }
     },
     "scheduler": {
-        "scheduler_type": "<ASYNCH_SCHEDULER>",
+        "scheduler_type": "FLUX",
         "scheduler_args": {
             "root_directory": "./test_copper_standardpress",
             "queue": "<HPC_QUEUE>",
+            "flux_machine": "<FLUX_MACHINE_NAME>",
             "account": "<HPC_ACCOUNT>",
             "wait_freq": 120
         }

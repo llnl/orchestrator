@@ -1,96 +1,98 @@
 {
-    "target_property":{
-        "target_property_type":"MeltingPoint",
-        "target_property_args":{
+    "target_property": {
+        "target_property_type": "MeltingPoint",
+        "target_property_args": {
             "estimate_error": false,
             "num_calculations": 2,
-            "simulator_type":"LAMMPS",
-            "simulator_path":"<LAMMPS_PATH>",
-            "init_config":"../sample_configs",
-            "elements":["Cu"],
+            "simulator_type": "LAMMPS",
+            "simulator_path": "<LAMMPS_PATH>",
+            "elements": [
+                "Cu"
+            ],
             "model_path": null,
-            "path_type":"01_melting_test",
+            "path_type": "01_melting_test",
             "random_seed_use": false,
-            "init_config_use": false,
-            "sim_params":{
-                "press":0.0,
-                "temp":1000.0,
-                "ice_temp":550.0,
-                "below_temp_diff":50.0,
-                "above_temp_diff":50.0,
-                "farabove_temp_diff":1000.0,
-                "units":"metal",
-                "atom_style":"atomic",
-                "pair_style":"eam/alloy",
-                "potential":"cuMishinAlloy.eam",
-                "element":"Cu",
-                "mass":63.550,
-                "lattice":"fcc",
-                "lattice_param":3.6150,
-                "l_x_npt":10,
-                "l_y_npt":10,
-                "l_z_npt":10,
-                "l_x_nph":10,
-                "l_y_nph":10,
-                "l_z_nph":70,
-                "timestep":0.001,
-                "order_parameter":6,
-                "q_num_neigh":8,
-                "npt_steps":500000,
-                "nph_steps":100000
+            "sim_params": {
+                "press": 0.0,
+                "temp": 1000.0,
+                "ice_temp": 550.0,
+                "below_temp_diff": 50.0,
+                "above_temp_diff": 50.0,
+                "farabove_temp_diff": 1000.0,
+                "units": "metal",
+                "atom_style": "atomic",
+                "pair_style": "eam/alloy",
+                "potential": "cuMishinAlloy.eam",
+                "element": "Cu",
+                "mass": 63.550,
+                "lattice": "fcc",
+                "lattice_param": 3.6150,
+                "l_x_npt": 10,
+                "l_y_npt": 10,
+                "l_z_npt": 10,
+                "l_x_nph": 10,
+                "l_y_nph": 10,
+                "l_z_nph": 70,
+                "timestep": 0.001,
+                "order_parameter": 6,
+                "q_num_neigh": 8,
+                "npt_steps": 500000,
+                "nph_steps": 100000
             },
-            "melting_calc_params":{
-                "temp_min":500.0,
-                "temp_max":2000.0,
-                "num_temp":3,
-                "temp_thresh":500,
-                "temp_incr":50.0,
-                "exp_den_solid":8.96,
-                "exp_den_liquid":7.992,
-                "den_tolerance":4.0,
-                "max_iter":5,
-                "eps_dbscan":0.025
+            "melting_calc_params": {
+                "temp_min": 500.0,
+                "temp_max": 2000.0,
+                "num_temp": 3,
+                "temp_thresh": 500,
+                "temp_incr": 50.0,
+                "exp_den_solid": 8.96,
+                "exp_den_liquid": 7.992,
+                "den_tolerance": 4.0,
+                "max_iter": 5,
+                "eps_dbscan": 0.025
             },
-            "input_template":{
-                "NPT":"./templates/kim_npt.in",
-                "NPH":"./templates/kim_nph.in"
+            "input_template": {
+                "NPT": "./templates/kim_npt.in",
+                "NPH": "./templates/kim_nph.in"
             },
-            "job_details":{
+            "job_details": {
                 "gpu_use": false,
                 "synchronous": false,
-                "nodes":<MELTING_NODES>,
-                "tasks":<MELTING_TASKS>
+                "nodes":<NODES>,
+                "tasks":<TASKS>
             },
-            "npt_job_details":{
-                "walltime":7
+            "npt_job_details": {
+                "walltime": 7
             },
-            "nph_job_details":{
-                "walltime":20
+            "nph_job_details": {
+                "walltime": 20
             }
         }
     },
-    "workflow":{
-	"workflow_type":"<ASYNCH_WORKFLOW>",
-        "workflow_args":{
-	    "root_directory":"./test_copper_standardpress",
-	    "queue":"<HPC_QUEUE>",
-        "account":"<HPC_ACCOUNT>",
-	    "wait_freq":120
+    "scheduler": {
+        "scheduler_type": "<ASYNCH_SCHEDULER>",
+        "scheduler_args": {
+            "root_directory": "./test_copper_standardpress",
+            "queue": "<HPC_QUEUE>",
+            "account": "<HPC_ACCOUNT>",
+            "wait_freq": 120
         }
     },
-    "storage":{
-	"storage_type":"LOCAL",
-	"storage_args":{
-	    "database_path":"./melting_storage",
-	    "dataset_name":"melting_point_test"
-	}
+    "storage": {
+        "storage_type": "LOCAL",
+        "storage_args": {
+            "database_path": "./melting_storage",
+            "dataset_name": "melting_point_test"
+        }
     },
-    "potential":{
-        "potential_type":"KIM",
-        "potential_args":{
-            "kim_api":"<KIM_API>",
-            "kim_id":"EAM_Dynamo_MishinMehlPapaconstantopoulos_2001_Cu__MO_346334655118_005",
-            "species": ["Cu"],
+    "potential": {
+        "potential_type": "KIM",
+        "potential_args": {
+            "kim_api": "<KIM_API>",
+            "kim_id": "EAM_Dynamo_MishinMehlPapaconstantopoulos_2001_Cu__MO_346334655118_005",
+            "species": [
+                "Cu"
+            ],
             "model_driver": "EAM_Dynamo__MD_120291908751_005"
         }
     }

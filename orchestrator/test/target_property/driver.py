@@ -6,12 +6,12 @@
 
 # Warning: This test is using "fake" lammps input files
 # (much shorter runs for various steps) for a fast evaluation
-# of the workflow for melting point calculations
+# of the scheduler for melting point calculations
 from orchestrator.test.target_property.target_property_unit_testers import (
     target_property_unit_test, sample_config_unit_test)
 import pytest
 
-tests_ran = [False] * 6
+tests_ran = [False] * 7
 
 tests_ran[0] = target_property_unit_test(
     'test_inputs/simple_elastic_input.json')
@@ -22,8 +22,10 @@ tests_ran[2] = target_property_unit_test(
 tests_ran[3] = target_property_unit_test(
     'test_inputs/copper_standardpress_melting_input_kim_api.json')
 tests_ran[4] = target_property_unit_test(
-    'test_inputs/copper_standardpress_melting_slurm2lsf_input.json')
+    'test_inputs/copper_standardpress_melting_ssh2flux_input.json')
 tests_ran[5] = sample_config_unit_test()
+tests_ran[6] = target_property_unit_test(
+    'test_inputs/mixture_properties_default_template.json')
 
 # now validate the tests:
 validation_tests = [
@@ -33,6 +35,7 @@ validation_tests = [
     'test_melting_point',
     'test_melting_point',
     'test_config_sampling',
+    'test_simple_property',
 ]
 test_strings = []
 for ran, test in zip(tests_ran, validation_tests):

@@ -5,10 +5,26 @@ ref_dir = 'TEST_PATH/reference_output'
 test_dir = 'INSTALL_PATH'
 
 
+def test_simple_property():
+    """
+    Test the simple property target property module
+
+    In this test the  simple property calculations are run from the provided
+    input file. The calculated simple properties are saved to
+    mixture_properties_default_template.dat and is the basis for comparison
+    in this test.
+    """
+    ref_file = (f'{ref_dir}/target_property/'
+                'mixture_properties_default_template.dat')
+    test_file = (f'{test_dir}/target_property/'
+                 'mixture_properties_default_template.dat')
+    compare_outputs(ref_file, test_file)
+
+
 @pytest.mark.parametrize('job_path', [
     'copper_standardpress_melting_output.dat',
     'copper_standardpress_melting_output_kim_api.dat',
-    'copper_standardpress_melting_slurm2lsf_output.dat',
+    'copper_standardpress_melting_ssh2flux_output.dat',
 ])
 def test_melting_point(job_path):
     """
@@ -19,6 +35,7 @@ def test_melting_point(job_path):
     and is the basis for comparison in this test. This test uses copper
     standard pressure input file
     """
+
     ref_file = (f'{ref_dir}/target_property/{job_path}')
     test_file = (f'{test_dir}/target_property/{job_path}')
     compare_outputs(ref_file, test_file)
