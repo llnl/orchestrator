@@ -15,7 +15,7 @@ def atom_level_score_unit_test(input_file: str) -> bool:
     Basic test of atom-level scores.
 
     :param input_file: input file path with requisite module blocks.
-        score is required, workflow and storage are optional. If score key
+        score is required, scheduler and storage are optional. If score key
         isn't present the whole input is taken as the score args
     :type input_file: str
     :returns: boolean flag that the function completed execution. Does not
@@ -31,9 +31,9 @@ def atom_level_score_unit_test(input_file: str) -> bool:
 
     # create the modules
     score = init_and_validate_module_type('score', all_inputs)
-    workflow = init_and_validate_module_type('workflow', all_inputs)
-    if workflow is None:
-        workflow = score.default_wf
+    scheduler = init_and_validate_module_type('scheduler', all_inputs)
+    if scheduler is None:
+        scheduler = score.default_scheduler
     storage = init_and_validate_module_type('storage', all_inputs)
 
     query_configs = safe_read(score_inputs['query_configs_path'], index=':')
@@ -46,11 +46,11 @@ def atom_level_score_unit_test(input_file: str) -> bool:
         path_type=score_inputs['path_type'],
         compute_args=score_inputs.get('compute_args', {}),
         configs=query_configs,
-        workflow=workflow,
+        scheduler=scheduler,
         job_details=score_inputs.get('job_details', {}),
         batch_size=all_inputs.get('batch_size', 1),
     )
-    workflow.block_until_completed(calc_ids)
+    scheduler.block_until_completed(calc_ids)
 
     if storage is not None:
 
@@ -84,7 +84,7 @@ def atom_level_score_unit_test(input_file: str) -> bool:
         new_handle = score.save_labeled_configs(
             calc_ids,
             dataset_name=storage_inputs['storage_args']['dataset_name'],
-            workflow=workflow,
+            scheduler=scheduler,
             storage=storage,
             cleanup=False,
         )
@@ -102,7 +102,7 @@ def atom_level_score_unit_test(input_file: str) -> bool:
 
         i = 0  # for handling batched results
         for calc_id in calc_ids:
-            save_path = workflow.get_job_path(calc_id)
+            save_path = scheduler.get_job_path(calc_id)
 
             # check how many results there should be
             dummy_configs = safe_read(os.path.join(save_path,
@@ -148,7 +148,7 @@ def atom_level_score_unit_test_with_in_memory_arrays(input_file: str) -> bool:
     Test of the score module specific for handling in memory array input.
 
     :param input_file: input file path with requisite module blocks.
-        score is required, workflow and storage are optional. If
+        score is required, scheduler and storage are optional. If
         score key isn't present the whole input is taken as the
         score args
     :type input_file: str
@@ -180,9 +180,9 @@ def atom_level_score_unit_test_with_in_memory_arrays(input_file: str) -> bool:
 
     # create the modules
     score = init_and_validate_module_type('score', all_inputs)
-    workflow = init_and_validate_module_type('workflow', all_inputs)
-    if workflow is None:
-        workflow = score.default_wf
+    scheduler = init_and_validate_module_type('scheduler', all_inputs)
+    if scheduler is None:
+        scheduler = score.default_scheduler
     storage = init_and_validate_module_type('storage', all_inputs)
 
     query_configs = safe_read(score_inputs['query_configs_path'], index=':')
@@ -191,11 +191,11 @@ def atom_level_score_unit_test_with_in_memory_arrays(input_file: str) -> bool:
         path_type=score_inputs['path_type'],
         compute_args=score_inputs.get('compute_args', {}),
         configs=query_configs,
-        workflow=workflow,
+        scheduler=scheduler,
         job_details=score_inputs.get('job_details', {}),
         batch_size=all_inputs.get('batch_size', 1),
     )
-    workflow.block_until_completed(calc_ids)
+    scheduler.block_until_completed(calc_ids)
 
     if storage is not None:
 
@@ -226,7 +226,7 @@ def atom_level_score_unit_test_with_in_memory_arrays(input_file: str) -> bool:
         new_handle = score.save_labeled_configs(
             calc_ids,
             dataset_name=storage_inputs['storage_args']['dataset_name'],
-            workflow=workflow,
+            scheduler=scheduler,
             storage=storage,
             cleanup=False,
         )
@@ -240,7 +240,7 @@ def atom_level_score_unit_test_with_in_memory_arrays(input_file: str) -> bool:
 
         i = 0  # for handling batched results
         for calc_id in calc_ids:
-            save_path = workflow.get_job_path(calc_id)
+            save_path = scheduler.get_job_path(calc_id)
 
             # check how many results there should be
             dummy_configs = safe_read(os.path.join(save_path,
@@ -286,7 +286,7 @@ def dataset_level_score_unit_test(input_file: str) -> bool:
     Basic test of dataset-level score.
 
     :param input_file: input file path with requisite module blocks.
-        score is required, workflow and storage are optional. If
+        score is required, scheduler and storage are optional. If
         score key isn't present the whole input is taken as the
         score args
     :type input_file: str
@@ -303,9 +303,9 @@ def dataset_level_score_unit_test(input_file: str) -> bool:
 
     # create the modules
     score = init_and_validate_module_type('score', all_inputs)
-    workflow = init_and_validate_module_type('workflow', all_inputs)
-    if workflow is None:
-        workflow = score.default_wf
+    scheduler = init_and_validate_module_type('scheduler', all_inputs)
+    if scheduler is None:
+        scheduler = score.default_scheduler
     storage = init_and_validate_module_type('storage', all_inputs)
 
     dataset = safe_read(score_inputs['dataset_path'], index=':')
@@ -314,11 +314,11 @@ def dataset_level_score_unit_test(input_file: str) -> bool:
         path_type=score_inputs['path_type'],
         compute_args=score_inputs.get('compute_args', {}),
         configs=dataset,
-        workflow=workflow,
+        scheduler=scheduler,
         job_details=score_inputs.get('job_details', {}),
         batch_size=all_inputs.get('batch_size', 1),
     )
-    workflow.block_until_completed(calc_ids)
+    scheduler.block_until_completed(calc_ids)
 
     if storage is not None:
         raise NotImplementedError(
@@ -337,7 +337,7 @@ def model_level_score_unit_test(input_file: str) -> bool:
     slight modification in some arguments names and reading dataset.
 
     :param input_file: input file path with requisite module blocks.
-        score is required, workflow and storage are optional. If
+        score is required, scheduler and storage are optional. If
         score key isn't present the whole input is taken as the
         score args
     :type input_file: str
@@ -351,19 +351,19 @@ def model_level_score_unit_test(input_file: str) -> bool:
 
     # check if input has sections, if not score is the only input
     score_inputs = all_inputs.get('score', all_inputs)
-    wf_inputs = all_inputs.get('workflow', None)
+    scheduler_inputs = all_inputs.get('scheduler', None)
     storage_inputs = all_inputs.get('storage', None)
 
     # create the modules
     score = init_and_validate_module_type('score',
                                           score_inputs,
                                           single_input_dict=True)
-    if wf_inputs:
-        workflow = init_and_validate_module_type('workflow',
-                                                 wf_inputs,
-                                                 single_input_dict=True)
+    if scheduler_inputs:
+        scheduler = init_and_validate_module_type('scheduler',
+                                                  scheduler_inputs,
+                                                  single_input_dict=True)
     else:
-        workflow = score.default_wf
+        scheduler = score.default_scheduler
     if storage_inputs:
         storage = init_and_validate_module_type('storage',
                                                 storage_inputs,
@@ -377,12 +377,12 @@ def model_level_score_unit_test(input_file: str) -> bool:
         score_inputs['path_type'],
         dataset,
         score_inputs.get('compute_args', {}),
-        workflow,
+        scheduler,
         score_inputs.get('job_details', {}),
         all_inputs.get('batch_size', 1),
     )
 
-    workflow.block_until_completed(calc_ids)
+    scheduler.block_until_completed(calc_ids)
 
     if storage is not None:
         raise NotImplementedError(

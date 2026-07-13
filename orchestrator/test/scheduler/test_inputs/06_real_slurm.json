@@ -1,0 +1,15 @@
+{
+  "scheduler": {
+    "scheduler_type": "SLURM",
+    "scheduler_args": {
+      "root_directory": "./orchestrator_scheduler",
+      "checkpoint_file": "./orchestrator_checkpoint.json",
+      "queue": "debug",
+      "account": "default",
+      "walltime": 5,
+      "nodes": 1,
+      "tasks": 1,
+      "wait_freq": 30
+    }
+  }
+}

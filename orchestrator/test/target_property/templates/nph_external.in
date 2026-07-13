@@ -1,0 +1,178 @@
+#################################################################################
+#										#
+#			{{ element }} melting nph					#
+#										#
+#################################################################################
+
+# bin size for the interface profile
+variable	binwidth		equal	0.01
+
+# pseudo-random number generator seed
+variable	seed			equal	1
+
+# lattice details for the starting configuration
+variable	lattice			string	{{ lattice }}
+variable       lattice_parameter       equal   {{ lattice_param }}  # This is equilibrium solid at ambient conditions
+
+# 10x10x200 bcc cells = 20x20x400 molecules = 220 ts/sec on 16 nodes of lass / walltime = 1.25 hr
+variable	lattice_number_x	equal	{{ l_x_nph }}
+variable	lattice_number_y	equal	{{ l_y_nph }}
+variable	lattice_number_z	equal	{{ l_y_nph }}
+
+# half of the box, running the long direction
+variable	lattice_number_z_half	equal	0.5*${lattice_number_z}	# half of the box
+
+# thermodynamic state:
+variable        equil_temperature       equal   {{ temperature }}	# K *** this is our initial guess for Tmelt ****
+variable        equil_pressure          equal   {{ pressure }}	# GPa
+
+# parameters that dictate the 2-phase equilibration protocol
+variable        equil_pressure_bar      equal   (${equil_pressure}*10000)
+variable	ice_temperature		equal	{{ ice_temp }}
+variable	below_temperature	equal	${equil_temperature}-{{ below_temp_diff }}
+variable	above_temperature	equal	${equil_temperature}+{{ above_temp_diff }}
+variable	farabove_temperature	equal	${equil_temperature}+{{ farabove_temp_diff }}
+
+# output frequency
+variable	traj_freq		equal	10000	# output traj this often
+variable	thermo_freq		equal	1000	# output thermo this often
+
+units		{{ units }}
+atom_style      {{ atom_style }}
+# fully periodic
+boundary	p p p
+
+# energy conserving
+timestep	{{ timestep }}
+
+# set the lattice spacing and replicate (we're going to melt it anyway)
+lattice		${lattice} ${lattice_parameter} orient x 1 0 0 orient y 0 1 0 orient z 0 0 1
+region		box block 0 ${lattice_number_x} 0 ${lattice_number_y} 0 ${lattice_number_z} units lattice
+
+# populate the simulation box
+create_box      1 box
+create_atoms    1 box
+mass            1 {{ mass }}
+
+# thermo and barostat damping freq
+variable	tdamp	equal	$(200.*dt)
+variable	pdamp	equal	$(500.*dt)
+
+# neighbor list
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+
+# read in the potential
+{{ potential }}
+
+# output observables
+thermo_style	custom step time vol density temp etotal ke pe press spcpu
+thermo		${thermo_freq}
+thermo_modify	flush yes
+
+# energy minimization to start us off
+minimize       1.0e-4 1.0e-6 1000 10000
+
+# initial velocities are randomly sampled from a gaussian with constraint of 0 net linear and angular momentum
+velocity	all create ${ice_temperature} ${seed} dist gaussian mom yes rot yes
+
+# do a little velocity rescaling to remove any bad contacts
+dump		ice_dump        all custom ${traj_freq} {{ element }}.solid.lammpstrj x y z type mass id vx vy vz fx fy fz
+fix		ice_nve_rescale all temp/rescale 1 ${ice_temperature} ${ice_temperature} 1. 1.
+fix		ice_nve         all nve
+run		10000
+
+# quick test of energy conservation
+unfix		ice_nve_rescale
+run		20000
+
+# stabilize the ice structure NVT
+unfix           ice_nve
+fix             dyn_ice all nvt temp ${ice_temperature} ${ice_temperature} ${tdamp}
+run             50000
+
+# barostat the ice
+unfix           dyn_ice
+fix             dyn_ice all npt temp ${ice_temperature} ${ice_temperature} ${tdamp} iso ${equil_pressure_bar} ${equil_pressure_bar} ${pdamp}
+run             100000
+write_restart	{{ element }}.solid.restart
+
+# warm the system to just below melting
+undump		ice_dump
+dump		warm_dump	all custom ${traj_freq} {{ element }}.warm.lammpstrj x y z type mass id vx vy vz fx fy fz
+unfix		dyn_ice
+fix             dyn_warm all npt temp ${ice_temperature} ${below_temperature} ${tdamp} iso ${equil_pressure_bar} ${equil_pressure_bar} ${pdamp}
+run		100000
+write_restart	{{ element }}.warm.restart
+
+# define the region for solid
+region		solid_reg block 0 ${lattice_number_x} 0 ${lattice_number_y} 0 ${lattice_number_z_half} side in units lattice
+group		solid dynamic all region solid_reg
+# define the region for liquid
+region		liquid_reg block 0 ${lattice_number_x} 0 ${lattice_number_y} 0 ${lattice_number_z_half} side out units lattice
+group		liquid dynamic all region liquid_reg
+
+# melt the liquid region of the box
+undump		warm_dump
+dump		melt_dump	all custom ${traj_freq} {{ element }}.melt.lammpstrj x y z type mass id vx vy vz fx fy fz
+unfix		dyn_warm
+fix		dyn_freeze_solid solid setforce 0. 0. 0.
+fix             dyn_melt liquid npt temp ${below_temperature} ${farabove_temperature} ${tdamp} iso ${equil_pressure_bar} ${equil_pressure_bar} ${pdamp}
+run		100000
+
+# cool the liquid to just above the melting temp
+unfix		dyn_melt
+fix             dyn_melt liquid npt temp ${farabove_temperature} ${above_temperature} ${tdamp} iso ${equil_pressure_bar} ${equil_pressure_bar} ${pdamp}
+run		100000
+
+# release the solid, bring to just below melting
+unfix		dyn_melt
+unfix		dyn_freeze_solid
+fix		dyn_freeze_liquid liquid setforce 0. 0. 0.
+fix             dyn_melt solid npt temp ${ice_temperature} ${below_temperature} ${tdamp} iso ${equil_pressure_bar} ${equil_pressure_bar} ${pdamp}
+run		100000
+
+# thermostat at the equil temperature, resolve any anisotropic stress
+unfix		dyn_freeze_liquid
+unfix		dyn_melt
+fix             dyn_melt all npt temp ${equil_temperature} ${equil_temperature} ${tdamp} aniso ${equil_pressure_bar} ${equil_pressure_bar} ${pdamp}
+run		20000
+
+undump		melt_dump
+# start timestep counter back to 0 ahead of final averaging
+log log_msd.dat
+reset_timestep	0
+
+# Compute diffusion coeff in 3D using MSD
+compute         msd all msd com yes
+variable        twopoint equal c_msd[4]/6/(step*dt+1.0e-6)
+fix             9 all vector 100 c_msd[4]
+variable        diff_fitslope equal slope(f_9)/6/(100*dt)
+
+dump            final_melt_dump       all custom ${traj_freq} dump.lammpstrj x y z type mass id vx vy vz fx fy fz
+
+# output observable with average temperature
+variable	temp_var	equal temp
+fix		temp_avg	all ave/time ${thermo_freq} 1 ${thermo_freq} v_temp_var ave window ${traj_freq}
+thermo_style	custom step time vol density f_temp_avg temp etotal ke pe press c_msd[4] spcpu
+thermo		${thermo_freq}
+thermo_modify	flush yes
+
+# output image sequence (don't render the 4th dummy charge site atom) for movie construction
+group           {{ element }}_atoms type 1
+
+# Steinhard Qx profile in z (bcc has n=8 neighbors vs. default n=12 for fcc)
+compute         q_atom {{ element }}_atoms orientorder/atom nnn {{ q_num_neigh }} degrees 1 {{ order_parameter }}
+compute         qcc {{ element }}_atoms chunk/atom bin/1d z ${binwidth} ${binwidth} units reduced
+fix             q_avg {{ element }}_atoms ave/chunk 10 1 ${traj_freq} qcc c_q_atom[1] ave one norm sample file q_profile.dat
+
+# NPH, barostat in z
+unfix           dyn_melt
+fix             dyn_equil all nph z ${equil_pressure_bar} ${equil_pressure_bar} $(1000.*dt)
+run		{{ nph_steps }}
+
+# write the final state
+write_restart	{{ element }}.melt.restart
+
+# exit
+quit

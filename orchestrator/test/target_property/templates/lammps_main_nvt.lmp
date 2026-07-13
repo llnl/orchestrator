@@ -1,0 +1,75 @@
+#-------------------------------------------------------------
+# INITIALIZE LAMMPS RUN
+#-------------------------------------------------------------
+
+#General Parameters
+units			{{ units }}
+boundary		p p p
+
+#Set Force Field Style
+atom_style              {{ atom_style }}
+bond_style              {{ bond_style }}
+angle_style             {{ angle_style }}
+dihedral_style  {{ dihedral_style }}
+improper_style  {{ improper_style }}
+pair_style	{{ pair_style }}
+
+#Get Datafile
+read_data       {{ data_file }}
+
+#FF Parameter File List
+include         {{ ff_param }}
+
+#Set Wolf Electrostatics
+pair_coeff      *  * {{ pair_coeff }}
+
+#Pairwise Exclusions
+special_bonds   {{ special_bonds }}
+
+#Neighbor List Parameters
+neighbor        2.0 bin
+neigh_modify    delay 0 every 1 check yes
+
+#-------------------------------------------------------------
+# SIMULATION COMMANDS
+#-------------------------------------------------------------
+
+#-------------------------------------------------------------
+# COMPUTE SETUP
+#-------------------------------------------------------------
+
+compute         stress  all  stress/atom NULL
+compute         PEmol   all  pe/atom bond angle dihedral improper
+compute         PEpair  all  pe/atom pair
+
+#-------------------------------------------------------------
+# DUMP SETUP
+#-------------------------------------------------------------
+
+thermo_style    custom step time etotal pe ke temp press pxx pyy pzz pxy pxz pyz lx ly lz xy xz yz vol density
+thermo              10
+
+dump                trajectory  all custom 1000 dump.*.lammpstrj id mol type xu yu zu vx vy vz c_stress[1] c_stress[2] c_stress[3] c_stress[4] c_stress[5] c_stress[6] c_PEmol c_PEpair
+dump_modify         trajectory  first yes sort id format line "%8d %6d %4d %25.12e %25.12e %25.12e %25.12e %25.12e %25.12e %25.12e %25.12e %25.12e %25.12e %25.12e %25.12e %25.12e %25.12e"
+
+#-------------------------------------------------------------
+# SIMULATION SETUP
+#-------------------------------------------------------------
+
+run_style       verlet
+
+timestep	 {{ timestep }}
+
+variable    myTemp  equal {{ temperature }}
+variable    myPress equal {{ pressure }}
+
+
+#------------- Rigid Body NPT
+
+velocity        all create ${myTemp} {{ seed }} mom yes dist gaussian
+
+fix         1 all nvt temp ${myTemp} ${myTemp} 100.0
+
+run	     {{ run_steps }}
+
+unfix       1

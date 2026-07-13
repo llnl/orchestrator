@@ -6,7 +6,7 @@
         "elements":["Si"]
     },
     "init_conf":"../sample_configs",
-    "input_args":{
+    "template_fill":{
         "temperature":300,
         "pressure":1,
         "model_name":"SW_StillingerWeber_1985_Si__MO_405512056662_006"

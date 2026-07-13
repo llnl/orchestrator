@@ -1,30 +1,30 @@
 {
-    "oracle":{
-        "oracle_type":"LAMMPSSnap",
-        "oracle_args":{
-            "code_path":"<LAMMPS_PATH>",
-            "potential":"mlearn_Si"
+    "oracle": {
+        "oracle_type": "LAMMPSSnap",
+        "oracle_args": {
+            "code_path": "<LAMMPS_PATH>",
+            "potential": "mlearn_Si"
         },
-        "extra_input_args":{
-            "model_path":"<POTENTIAL_DIR>"
+        "extra_input_args": {
+            "model_path": "<POTENTIAL_DIR>"
         },
-        "path_type":"04_unit_test",
-        "data_path":"../sample_configs/"
+        "path_type": "04_unit_test",
+        "data_path": "../sample_configs/"
     },
-    "workflow":{
-        "workflow_type":"<ASYNCH_WORKFLOW>",
-        "workflow_args":{
-            "root_directory":"./oracle",
-            "queue":"<HPC_QUEUE>",
-            "account":"<HPC_ACCOUNT>",
-            "wait_freq":20,
-            "walltime":2
+    "scheduler": {
+        "scheduler_type": "<ASYNCH_SCHEDULER>",
+        "scheduler_args": {
+            "root_directory": "./oracle",
+            "queue": "<HPC_QUEUE>",
+            "account": "<HPC_ACCOUNT>",
+            "wait_freq": 20,
+            "walltime": 2
         }
     },
-    "storage":{
-        "storage_type":"COLABFIT",
-        "storage_args":{
-            "credential_file":"<STORAGE_CREDENTIAL_PATH>"
+    "storage": {
+        "storage_type": "COLABFIT",
+        "storage_args": {
+            "credential_file": "<STORAGE_CREDENTIAL_PATH>"
         }
     }
 }

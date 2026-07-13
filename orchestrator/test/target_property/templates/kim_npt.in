@@ -1,52 +1,52 @@
 #################################################################################
 #										#
-#			<ELEMENT> melting npt					#
+#			{{ element }} melting npt					#
 #										#
 #################################################################################
 
 # initialize KIM potential
-kim init <POTENTIAL> metal
+kim init {{ potential }} metal
 
 # bin size for the interface profile
 variable	binwidth		equal	0.01
 
 # pseudo-random number generator seed
-variable       seed                    equal	<SEED>
+variable       seed                    equal	{{ seed }}
 
 # lattice details for the starting configuration
-variable       lattice			string	<LATTICE>
-variable       lattice_parameter	equal	<LATTICE_PARAM>
+variable       lattice			string	{{ lattice }}
+variable       lattice_parameter	equal	{{ lattice_param }}
 
 # 10x10x200 bcc cells = 20x20x400 molecules = 220 ts/sec on 16 nodes of lass / walltime = 1.25 hr
-variable	lattice_number_x	equal	<L_X_NPT>
-variable	lattice_number_y	equal	<L_Y_NPT>
-variable	lattice_number_z	equal	<L_Z_NPT>
+variable	lattice_number_x	equal	{{ l_x_npt }}
+variable	lattice_number_y	equal	{{ l_y_npt }}
+variable	lattice_number_z	equal	{{ l_z_npt }}
 
 # half of the box, running the long direction
 variable	lattice_number_z_half	equal	0.5*${lattice_number_z}	# half of the box
 
 # thermodynamic state:
-variable        equil_temperature       equal   <TEMPERATURE>	# K *** this is our initial guess for Tmelt ****
-variable        equil_pressure          equal   <PRESSURE>   # GPa
+variable        equil_temperature       equal   {{ temperature }}	# K *** this is our initial guess for Tmelt ****
+variable        equil_pressure          equal   {{ pressure }}   # GPa
 
 # parameters that dictate the 2-phase equilibration protocol
 variable        equil_pressure_bar      equal   (${equil_pressure}*10000)
-variable	ice_temperature		equal	<ICE_TEMP>
-variable	below_temperature	equal	${equil_temperature}-<BELOW_TEMP_DIFF>
-variable	above_temperature	equal	${equil_temperature}+<ABOVE_TEMP_DIFF>
-variable	farabove_temperature	equal	${equil_temperature}+<FARABOVE_TEMP_DIFF>
+variable	ice_temperature		equal	{{ ice_temp }}
+variable	below_temperature	equal	${equil_temperature}-{{ below_temp_diff }}
+variable	above_temperature	equal	${equil_temperature}+{{ above_temp_diff }}
+variable	farabove_temperature	equal	${equil_temperature}+{{ farabove_temp_diff }}
 
 # output frequency
 variable	traj_freq		equal	10000	# output traj this often
 variable	thermo_freq		equal	1000	# output thermo this often
 
-units		<UNITS>
-atom_style	<ATOM_STYLE>
+units		{{ units }}
+atom_style	{{ atom_style }}
 # fully periodic
 boundary	p p p
 
 # energy conserving
-timestep	<TIMESTEP>
+timestep	{{ timestep }}
 
 # set the lattice spacing and replicate (we're going to melt it anyway)
 lattice		${lattice} ${lattice_parameter} orient x 1 0 0 orient y 0 1 0 orient z 0 0 1
@@ -55,8 +55,8 @@ region		box block 0 ${lattice_number_x} 0 ${lattice_number_y} 0 ${lattice_number
 # populate the simulation box
 create_box      1 box
 create_atoms    1 box
-mass            1 <MASS>
-kim interactions <ELEMENT>
+mass            1 {{ mass }}
+kim interactions {{ element }}
 
 # thermo and barostat damping freq
 variable	tdamp	equal	$(200.*dt)
@@ -75,7 +75,7 @@ thermo_modify	flush yes
 velocity	all create ${ice_temperature} ${seed} dist gaussian mom yes rot yes
 
 # do a little velocity rescaling to remove any bad contacts
-dump		ice_dump        all custom ${traj_freq} <ELEMENT>.solid.lammpstrj x y z type mass id vx vy vz fx fy fz
+dump		ice_dump        all custom ${traj_freq} {{ element }}.solid.lammpstrj x y z type mass id vx vy vz fx fy fz
 fix		ice_nve_rescale all temp/rescale 1 ${ice_temperature} ${ice_temperature} 1. 1.
 fix		ice_nve         all nve
 run		10000
@@ -88,7 +88,7 @@ unfix           ice_nve
 undump          ice_dump
 
 # Warm the system to the guessed temperature
-dump            melt_dump_1        all custom ${traj_freq} <ELEMENT>.melt1.lammpstrj x y z type mass id vx vy vz fx fy fz
+dump            melt_dump_1        all custom ${traj_freq} {{ element }}.melt1.lammpstrj x y z type mass id vx vy vz fx fy fz
 fix             dyn_melt_1 all npt temp ${ice_temperature} ${equil_temperature} ${tdamp} iso ${equil_pressure_bar} ${equil_pressure_bar} ${pdamp}
 thermo          1000
 run             50000
@@ -115,13 +115,13 @@ variable        diff_fitslope equal slope(f_9)/6/(100*dt)
 thermo_style    custom step temp vol density pe ke etotal c_msd[4] v_diff_fitslope
 
 # Steinhard Qx profile in z (bcc has n=8 neighbors vs. default n=12 for fcc)
-group           <ELEMENT>_atoms type 1
-compute         q_atom <ELEMENT>_atoms orientorder/atom nnn <Q_NUM_NEIGH> degrees 1 <ORDER_PARAMETER>
-compute         qcc <ELEMENT>_atoms chunk/atom bin/1d z ${binwidth} ${binwidth} units reduced
-fix             q_avg <ELEMENT>_atoms ave/chunk 10 1 ${traj_freq} qcc c_q_atom[1] ave one norm sample file q_profile.dat
+group           {{ element }}_atoms type 1
+compute         q_atom {{ element }}_atoms orientorder/atom nnn {{ q_num_neigh }} degrees 1 {{ order_parameter }}
+compute         qcc {{ element }}_atoms chunk/atom bin/1d z ${binwidth} ${binwidth} units reduced
+fix             q_avg {{ element }}_atoms ave/chunk 10 1 ${traj_freq} qcc c_q_atom[1] ave one norm sample file q_profile.dat
 
 # Test melting temp with NPT
 dump            melt_dump_2  all custom ${traj_freq} dump.lammpstrj x y z type mass id vx vy vz fx fy fz
 fix             dyn_melt_2 all npt temp ${equil_temperature} ${equil_temperature} ${tdamp} iso ${equil_pressure_bar} ${equil_pressure_bar} ${pdamp}
 thermo          100
-run             <NPT_STEPS>
+run             {{ npt_steps }}

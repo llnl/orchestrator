@@ -1,0 +1,15 @@
+{
+  "scheduler": {
+    "scheduler_type": "LSF",
+    "scheduler_args": {
+      "root_directory": "./orchestrator_scheduler",
+      "checkpoint_file": "./orchestrator_checkpoint.json",
+      "queue": "normal",
+      "account": "default",
+      "walltime": 5,
+      "nodes": 1,
+      "tasks": 1,
+      "wait_freq": 30
+    }
+  }
+}

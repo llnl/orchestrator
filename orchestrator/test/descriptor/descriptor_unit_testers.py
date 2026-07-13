@@ -12,7 +12,7 @@ def descriptor_unit_test(input_file: str) -> bool:
     basic test of the descriptor module
 
     :param input_file: input file path with requisite module blocks.
-        descriptors is required, workflow and storage are optional. If
+        descriptors is required, scheduler and storage are optional. If
         descriptors key isn't present the whole input is taken as the
         descriptor args
     :type input_file: str
@@ -29,9 +29,9 @@ def descriptor_unit_test(input_file: str) -> bool:
     storage_inputs = all_inputs.get('storage', None)
     # create the modules
     descriptor = init_and_validate_module_type('descriptor', all_inputs)
-    workflow = init_and_validate_module_type('workflow', all_inputs)
-    if workflow is None:
-        workflow = descriptor.default_wf
+    scheduler = init_and_validate_module_type('scheduler', all_inputs)
+    if scheduler is None:
+        scheduler = descriptor.default_scheduler
     storage = init_and_validate_module_type('storage', all_inputs)
     if isinstance_no_import(storage, 'ColabfitStorage'):
         storage.set_default_property_map()
@@ -43,11 +43,11 @@ def descriptor_unit_test(input_file: str) -> bool:
         path_type=descriptor_inputs['path_type'],
         compute_args=descriptor_inputs.get('compute_args', {}),
         configs=configs,
-        workflow=workflow,
+        scheduler=scheduler,
         job_details=descriptor_inputs.get('job_details', {}),
         batch_size=all_inputs.get('batch_size', 1),
     )
-    workflow.block_until_completed(calc_ids)
+    scheduler.block_until_completed(calc_ids)
 
     if storage is not None:
 
@@ -87,7 +87,7 @@ def descriptor_unit_test(input_file: str) -> bool:
         new_handle = descriptor.save_labeled_configs(
             calc_ids,
             dataset_name=storage_inputs['storage_args']['dataset_name'],
-            workflow=workflow,
+            scheduler=scheduler,
             storage=storage,
         )
 
@@ -101,7 +101,7 @@ def descriptor_unit_test(input_file: str) -> bool:
 
         i = 0  # for handling batched results
         for calc_id in calc_ids:
-            save_path = workflow.get_job_path(calc_id)
+            save_path = scheduler.get_job_path(calc_id)
 
             # check how many results there should be
             dummy_configs = read(os.path.join(save_path,

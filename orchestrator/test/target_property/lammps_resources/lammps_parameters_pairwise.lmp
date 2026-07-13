@@ -1,0 +1,231 @@
+pair_coeff    1   1  lj/cut              0.10500000          3.74997000 #   C       C
+pair_coeff    1   2  lj/cut              0.08324662          3.62281934 #   C       CT
+pair_coeff    1   3  lj/cut              0.05612486          3.06187443 #   C       HC
+pair_coeff    1   4  lj/cut              0.05612486          3.06187443 #   C       HC
+pair_coeff    1   5  lj/cut              0.14849242          3.33165855 #   C       O
+pair_coeff    1   6  lj/cut              0.13360389          3.35409414 #   C       OS1
+pair_coeff    1   7  lj/cut              0.08324662          3.62281934 #   C       CT
+pair_coeff    1   8  lj/cut              0.05612486          3.06187443 #   C       HC
+pair_coeff    1   9  lj/cut              0.00000000          0.00000000 #   C       HO
+pair_coeff    1  10  lj/cut              0.13360389          3.42052356 #   C       OH
+pair_coeff    1  11  lj/cut              0.00000000          0.00000000 #   C       HW
+pair_coeff    1  12  lj/cut              0.10348913          3.45758107 #   C       OW
+pair_coeff    1  13  lj/cut              0.01370580          3.18739025 #   C       H1
+pair_coeff    1  14  lj/cut              0.09269548          3.25537569 #   C       O2
+pair_coeff    1  15  lj/cut              0.09444712          3.67755703 #   C       N1
+pair_coeff    1  16  lj/cut              0.11751251          3.63388543 #   C       C2
+pair_coeff    1  17  lj/cut              0.11751251          3.48128988 #   C       C1
+pair_coeff    1  18  lj/cut              0.08819169          3.32647549 #   C       N3
+pair_coeff    1  19  lj/cut              0.09749958          3.61958292 #   C       N4
+pair_coeff    1  20  lj/cut              0.09749958          3.39815553 #   C       N2
+pair_coeff    1  21  lj/cut              0.09269548          3.45874274 #   C       O1
+pair_coeff    2   2  lj/cut              0.06600000          3.49998000 #   CT      CT
+pair_coeff    2   3  lj/cut              0.04449719          2.95805510 #   CT      HC
+pair_coeff    2   4  lj/cut              0.04449719          2.95805510 #   CT      HC
+pair_coeff    2   5  lj/cut              0.11772850          3.21869163 #   CT      O
+pair_coeff    2   6  lj/cut              0.10592450          3.24036649 #   CT      OS1
+pair_coeff    2   7  lj/cut              0.06600000          3.49998000 #   CT      CT
+pair_coeff    2   8  lj/cut              0.04449719          2.95805510 #   CT      HC
+pair_coeff    2   9  lj/cut              0.00000000          0.00000000 #   CT      HO
+pair_coeff    2  10  lj/cut              0.10592450          3.30454348 #   CT      OH
+pair_coeff    2  11  lj/cut              0.00000000          0.00000000 #   CT      HW
+pair_coeff    2  12  lj/cut              0.08204877          3.34034448 #   CT      OW
+pair_coeff    2  13  lj/cut              0.01086630          3.07931505 #   CT      H1
+pair_coeff    2  14  lj/cut              0.07349129          3.14499530 #   CT      O2
+pair_coeff    2  15  lj/cut              0.07488003          3.55286169 #   CT      N1
+pair_coeff    2  16  lj/cut              0.09316685          3.51067087 #   CT      C2
+pair_coeff    2  17  lj/cut              0.09316685          3.36324939 #   CT      C1
+pair_coeff    2  18  lj/cut              0.06992057          3.21368431 #   CT      N3
+pair_coeff    2  19  lj/cut              0.07730010          3.49685331 #   CT      N4
+pair_coeff    2  20  lj/cut              0.07730010          3.28293389 #   CT      N2
+pair_coeff    2  21  lj/cut              0.07349129          3.34146676 #   CT      O1
+pair_coeff    3   3  lj/cut              0.03000000          2.50004000 #   HC      HC
+pair_coeff    3   4  lj/cut              0.03000000          2.50004000 #   HC      HC
+pair_coeff    3   5  lj/cut              0.07937254          2.72032046 #   HC      O
+pair_coeff    3   6  lj/cut              0.07141428          2.73863926 #   HC      OS1
+pair_coeff    3   7  lj/cut              0.04449719          2.95805510 #   HC      CT
+pair_coeff    3   8  lj/cut              0.03000000          2.50004000 #   HC      HC
+pair_coeff    3   9  lj/cut              0.00000000          0.00000000 #   HC      HO
+pair_coeff    3  10  lj/cut              0.07141428          2.79287930 #   HC      OH
+pair_coeff    3  11  lj/cut              0.00000000          0.00000000 #   HC      HW
+pair_coeff    3  12  lj/cut              0.05531727          2.82313700 #   HC      OW
+pair_coeff    3  13  lj/cut              0.00732606          2.60252447 #   HC      H1
+pair_coeff    3  14  lj/cut              0.04954782          2.65803502 #   HC      O2
+pair_coeff    3  15  lj/cut              0.05048411          3.00274877 #   HC      N1
+pair_coeff    3  16  lj/cut              0.06281308          2.96709063 #   HC      C2
+pair_coeff    3  17  lj/cut              0.06281308          2.84249540 #   HC      C1
+pair_coeff    3  18  lj/cut              0.04714044          2.71608846 #   HC      N3
+pair_coeff    3  19  lj/cut              0.05211572          2.95541254 #   HC      N4
+pair_coeff    3  20  lj/cut              0.05211572          2.77461567 #   HC      N2
+pair_coeff    3  21  lj/cut              0.04954782          2.82408551 #   HC      O1
+pair_coeff    4   4  lj/cut              0.03000000          2.50004000 #   HC      HC
+pair_coeff    4   5  lj/cut              0.07937254          2.72032046 #   HC      O
+pair_coeff    4   6  lj/cut              0.07141428          2.73863926 #   HC      OS1
+pair_coeff    4   7  lj/cut              0.04449719          2.95805510 #   HC      CT
+pair_coeff    4   8  lj/cut              0.03000000          2.50004000 #   HC      HC
+pair_coeff    4   9  lj/cut              0.00000000          0.00000000 #   HC      HO
+pair_coeff    4  10  lj/cut              0.07141428          2.79287930 #   HC      OH
+pair_coeff    4  11  lj/cut              0.00000000          0.00000000 #   HC      HW
+pair_coeff    4  12  lj/cut              0.05531727          2.82313700 #   HC      OW
+pair_coeff    4  13  lj/cut              0.00732606          2.60252447 #   HC      H1
+pair_coeff    4  14  lj/cut              0.04954782          2.65803502 #   HC      O2
+pair_coeff    4  15  lj/cut              0.05048411          3.00274877 #   HC      N1
+pair_coeff    4  16  lj/cut              0.06281308          2.96709063 #   HC      C2
+pair_coeff    4  17  lj/cut              0.06281308          2.84249540 #   HC      C1
+pair_coeff    4  18  lj/cut              0.04714044          2.71608846 #   HC      N3
+pair_coeff    4  19  lj/cut              0.05211572          2.95541254 #   HC      N4
+pair_coeff    4  20  lj/cut              0.05211572          2.77461567 #   HC      N2
+pair_coeff    4  21  lj/cut              0.04954782          2.82408551 #   HC      O1
+pair_coeff    5   5  lj/cut              0.21000000          2.96001000 #   O       O
+pair_coeff    5   6  lj/cut              0.18894444          2.97994289 #   O       OS1
+pair_coeff    5   7  lj/cut              0.11772850          3.21869163 #   O       CT
+pair_coeff    5   8  lj/cut              0.07937254          2.72032046 #   O       HC
+pair_coeff    5   9  lj/cut              0.00000000          0.00000000 #   O       HO
+pair_coeff    5  10  lj/cut              0.18894444          3.03896206 #   O       OH
+pair_coeff    5  11  lj/cut              0.00000000          0.00000000 #   O       HW
+pair_coeff    5  12  lj/cut              0.14635573          3.07188579 #   O       OW
+pair_coeff    5  13  lj/cut              0.01938292          2.83183492 #   O       H1
+pair_coeff    5  14  lj/cut              0.13109120          2.89223654 #   O       O2
+pair_coeff    5  15  lj/cut              0.13356840          3.26732329 #   O       N1
+pair_coeff    5  16  lj/cut              0.16618779          3.22852329 #   O       C2
+pair_coeff    5  17  lj/cut              0.16618779          3.09294986 #   O       C1
+pair_coeff    5  18  lj/cut              0.12472188          2.95540511 #   O       N3
+pair_coeff    5  19  lj/cut              0.13788523          3.21581623 #   O       N4
+pair_coeff    5  20  lj/cut              0.13788523          3.01908920 #   O       N2
+pair_coeff    5  21  lj/cut              0.13109120          3.07291787 #   O       O1
+pair_coeff    6   6  lj/cut              0.17000000          3.00001000 #   OS1     OS1
+pair_coeff    6   7  lj/cut              0.10592450          3.24036649 #   OS1     CT
+pair_coeff    6   8  lj/cut              0.07141428          2.73863926 #   OS1     HC
+pair_coeff    6   9  lj/cut              0.00000000          0.00000000 #   OS1     HO
+pair_coeff    6  10  lj/cut              0.17000000          3.05942661 #   OS1     OH
+pair_coeff    6  11  lj/cut              0.00000000          0.00000000 #   OS1     HW
+pair_coeff    6  12  lj/cut              0.13168143          3.09257205 #   OS1     OW
+pair_coeff    6  13  lj/cut              0.01743950          2.85090466 #   OS1     H1
+pair_coeff    6  14  lj/cut              0.11794739          2.91171304 #   OS1     O2
+pair_coeff    6  15  lj/cut              0.12017622          3.28932564 #   OS1     N1
+pair_coeff    6  16  lj/cut              0.14952504          3.25026436 #   OS1     C2
+pair_coeff    6  17  lj/cut              0.14952504          3.11377798 #   OS1     C1
+pair_coeff    6  18  lj/cut              0.11221669          2.97530699 #   OS1     N3
+pair_coeff    6  19  lj/cut              0.12406023          3.23747173 #   OS1     N4
+pair_coeff    6  20  lj/cut              0.12406023          3.03941993 #   OS1     N2
+pair_coeff    6  21  lj/cut              0.11794739          3.09361109 #   OS1     O1
+pair_coeff    7   7  lj/cut              0.06600000          3.49998000 #   CT      CT
+pair_coeff    7   8  lj/cut              0.04449719          2.95805510 #   CT      HC
+pair_coeff    7   9  lj/cut              0.00000000          0.00000000 #   CT      HO
+pair_coeff    7  10  lj/cut              0.10592450          3.30454348 #   CT      OH
+pair_coeff    7  11  lj/cut              0.00000000          0.00000000 #   CT      HW
+pair_coeff    7  12  lj/cut              0.08204877          3.34034448 #   CT      OW
+pair_coeff    7  13  lj/cut              0.01086630          3.07931505 #   CT      H1
+pair_coeff    7  14  lj/cut              0.07349129          3.14499530 #   CT      O2
+pair_coeff    7  15  lj/cut              0.07488003          3.55286169 #   CT      N1
+pair_coeff    7  16  lj/cut              0.09316685          3.51067087 #   CT      C2
+pair_coeff    7  17  lj/cut              0.09316685          3.36324939 #   CT      C1
+pair_coeff    7  18  lj/cut              0.06992057          3.21368431 #   CT      N3
+pair_coeff    7  19  lj/cut              0.07730010          3.49685331 #   CT      N4
+pair_coeff    7  20  lj/cut              0.07730010          3.28293389 #   CT      N2
+pair_coeff    7  21  lj/cut              0.07349129          3.34146676 #   CT      O1
+pair_coeff    8   8  lj/cut              0.03000000          2.50004000 #   HC      HC
+pair_coeff    8   9  lj/cut              0.00000000          0.00000000 #   HC      HO
+pair_coeff    8  10  lj/cut              0.07141428          2.79287930 #   HC      OH
+pair_coeff    8  11  lj/cut              0.00000000          0.00000000 #   HC      HW
+pair_coeff    8  12  lj/cut              0.05531727          2.82313700 #   HC      OW
+pair_coeff    8  13  lj/cut              0.00732606          2.60252447 #   HC      H1
+pair_coeff    8  14  lj/cut              0.04954782          2.65803502 #   HC      O2
+pair_coeff    8  15  lj/cut              0.05048411          3.00274877 #   HC      N1
+pair_coeff    8  16  lj/cut              0.06281308          2.96709063 #   HC      C2
+pair_coeff    8  17  lj/cut              0.06281308          2.84249540 #   HC      C1
+pair_coeff    8  18  lj/cut              0.04714044          2.71608846 #   HC      N3
+pair_coeff    8  19  lj/cut              0.05211572          2.95541254 #   HC      N4
+pair_coeff    8  20  lj/cut              0.05211572          2.77461567 #   HC      N2
+pair_coeff    8  21  lj/cut              0.04954782          2.82408551 #   HC      O1
+pair_coeff    9   9  lj/cut              0.00000000          0.00000000 #   HO      HO
+pair_coeff    9  10  lj/cut              0.00000000          0.00000000 #   HO      OH
+pair_coeff    9  11  lj/cut              0.00000000          0.00000000 #   HO      HW
+pair_coeff    9  12  lj/cut              0.00000000          0.00000000 #   HO      OW
+pair_coeff    9  13  lj/cut              0.00000000          0.00000000 #   HO      H1
+pair_coeff    9  14  lj/cut              0.00000000          0.00000000 #   HO      O2
+pair_coeff    9  15  lj/cut              0.00000000          0.00000000 #   HO      N1
+pair_coeff    9  16  lj/cut              0.00000000          0.00000000 #   HO      C2
+pair_coeff    9  17  lj/cut              0.00000000          0.00000000 #   HO      C1
+pair_coeff    9  18  lj/cut              0.00000000          0.00000000 #   HO      N3
+pair_coeff    9  19  lj/cut              0.00000000          0.00000000 #   HO      N4
+pair_coeff    9  20  lj/cut              0.00000000          0.00000000 #   HO      N2
+pair_coeff    9  21  lj/cut              0.00000000          0.00000000 #   HO      O1
+pair_coeff   10  10  lj/cut              0.17000000          3.12002000 #   OH      OH
+pair_coeff   10  11  lj/cut              0.00000000          0.00000000 #   OH      HW
+pair_coeff   10  12  lj/cut              0.13168143          3.15382190 #   OH      OW
+pair_coeff   10  13  lj/cut              0.01743950          2.90736817 #   OH      H1
+pair_coeff   10  14  lj/cut              0.11794739          2.96938089 #   OH      O2
+pair_coeff   10  15  lj/cut              0.12017622          3.35447229 #   OH      N1
+pair_coeff   10  16  lj/cut              0.14952504          3.31463737 #   OH      C2
+pair_coeff   10  17  lj/cut              0.14952504          3.17544782 #   OH      C1
+pair_coeff   10  18  lj/cut              0.11221669          3.03423435 #   OH      N3
+pair_coeff   10  19  lj/cut              0.12406023          3.30159138 #   OH      N4
+pair_coeff   10  20  lj/cut              0.12406023          3.09961707 #   OH      N2
+pair_coeff   10  21  lj/cut              0.11794739          3.15488151 #   OH      O1
+pair_coeff   11  11  lj/cut              0.00000000          0.00000000 #   HW      HW
+pair_coeff   11  12  lj/cut              0.00000000          0.00000000 #   HW      OW
+pair_coeff   11  13  lj/cut              0.00000000          0.00000000 #   HW      H1
+pair_coeff   11  14  lj/cut              0.00000000          0.00000000 #   HW      O2
+pair_coeff   11  15  lj/cut              0.00000000          0.00000000 #   HW      N1
+pair_coeff   11  16  lj/cut              0.00000000          0.00000000 #   HW      C2
+pair_coeff   11  17  lj/cut              0.00000000          0.00000000 #   HW      C1
+pair_coeff   11  18  lj/cut              0.00000000          0.00000000 #   HW      N3
+pair_coeff   11  19  lj/cut              0.00000000          0.00000000 #   HW      N4
+pair_coeff   11  20  lj/cut              0.00000000          0.00000000 #   HW      N2
+pair_coeff   11  21  lj/cut              0.00000000          0.00000000 #   HW      O1
+pair_coeff   12  12  lj/cut              0.10200000          3.18799000 #   OW      OW
+pair_coeff   12  13  lj/cut              0.01350858          2.93886623 #   OW      H1
+pair_coeff   12  14  lj/cut              0.09136166          3.00155078 #   OW      O2
+pair_coeff   12  15  lj/cut              0.09308810          3.39081421 #   OW      N1
+pair_coeff   12  16  lj/cut              0.11582160          3.35054773 #   OW      C2
+pair_coeff   12  17  lj/cut              0.11582160          3.20985021 #   OW      C1
+pair_coeff   12  18  lj/cut              0.08692268          3.06710685 #   OW      N3
+pair_coeff   12  19  lj/cut              0.09609664          3.33736040 #   OW      N4
+pair_coeff   12  20  lj/cut              0.09609664          3.13319793 #   OW      N2
+pair_coeff   12  21  lj/cut              0.09136166          3.18906110 #   OW      O1
+pair_coeff	13	13	buck	1322.3350000	0.22080928800	  5.652486000 #   H1  H1
+pair_coeff	13	14	buck	8943.2560700	0.22546882300	 40.862429500 #   H1  O2
+pair_coeff	13	15	buck	9112.2545700	0.25218152800	 45.259308100 #   H1  N1
+pair_coeff	13	16	buck	11337.6027700	0.24959266500	 60.213983700 #   H1  C2
+pair_coeff	13	17	buck	11337.6027700	0.24023441100	 60.213983700 #   H1  C1
+pair_coeff	13	18	buck	8508.7309500	0.23023451100	 45.259308100 #   H1  N3
+pair_coeff	13	19	buck	9406.7561600	0.24873623300	 45.259308100 #   H1  N4
+pair_coeff	13	20	buck	9406.7561600	0.23492848600	 45.259308100 #   H1  N2
+pair_coeff	13	21	buck	8943.2560700	0.23880996200	 40.862429500 #   H1  O1
+pair_coeff	14	14	buck	60485.3000000	0.23032924900	295.398900000 #   O2  O2
+pair_coeff	14	15	buck	61628.2757400	0.25827743700	327.184408100 #   O2  N1
+pair_coeff	14	16	buck	76678.8180100	0.25556257500	435.293367700 #   O2  C2
+pair_coeff	14	17	buck	76678.8180100	0.24576008600	435.293367700 #   O2  C1
+pair_coeff	14	18	buck	57546.5065600	0.23530488600	327.184408100 #   O2  N3
+pair_coeff	14	19	buck	63620.0578100	0.25466475800	327.184408100 #   O2  N4
+pair_coeff	14	20	buck	63620.0578100	0.24021008800	327.184408100 #   O2  N2
+pair_coeff	14	21	buck	60485.3000000	0.24426955800	295.398900000 #   O2  O1
+pair_coeff	15	15	buck	62792.8500000	0.29394473800	362.390100000 #   N1  N1
+pair_coeff	15	16	buck	78127.7986400	0.29043337200	482.131798200 #   N1  C2
+pair_coeff	15	17	buck	78127.7986400	0.27783925000	482.131798200 #   N1  C1
+pair_coeff	15	18	buck	58633.9486500	0.26455026500	362.390100000 #   N1  N3
+pair_coeff	15	19	buck	64822.2702900	0.28927438600	362.390100000 #   N1  N4
+pair_coeff	15	20	buck	64822.2702900	0.27076665100	362.390100000 #   N1  N2
+pair_coeff	15	21	buck	61628.2757400	0.27593571500	327.184408100 #   N1  O1
+pair_coeff	16	16	buck	97207.7700000	0.28700490600	641.438800000 #   C2  C2
+pair_coeff	16	17	buck	97207.7700000	0.27470006900	641.438800000 #   C2  C1
+pair_coeff	16	18	buck	72953.2316700	0.26170265600	482.131798200 #   C2  N3
+pair_coeff	16	19	buck	80652.8335700	0.28587306800	482.131798200 #   C2  N4
+pair_coeff	16	20	buck	80652.8335700	0.26778439900	482.131798200 #   C2  N2
+pair_coeff	16	21	buck	76678.8180100	0.27283916200	435.293367700 #   C2  O1
+pair_coeff	17	17	buck	97207.7700000	0.26340695300	641.438800000 #   C1  C1
+pair_coeff	17	18	buck	72953.2316700	0.25143294800	482.131798200 #   C1  N3
+pair_coeff	17	19	buck	80652.8335700	0.27366302600	482.131798200 #   C1  N4
+pair_coeff	17	20	buck	80652.8335700	0.25704162300	482.131798200 #   C1  N2
+pair_coeff	17	21	buck	76678.8180100	0.26169543000	435.293367700 #   C1  O1
+pair_coeff	18	18	buck	54750.5000000	0.24050024100	362.390100000 #   N3  N3
+pair_coeff	18	19	buck	60528.9562000	0.26076125900	362.390100000 #   N3  N4
+pair_coeff	18	20	buck	60528.9562000	0.24562679900	362.390100000 #   N3  N2
+pair_coeff	18	21	buck	57546.5065600	0.24987303300	327.184408100 #   N3  O1
+pair_coeff	19	19	buck	66917.2800000	0.28475012200	362.390100000 #   N4  N4
+pair_coeff	19	20	buck	66917.2800000	0.26679882100	362.390100000 #   N4  N2
+pair_coeff	19	21	buck	63620.0578100	0.27181609600	327.184408100 #   N4  O1
+pair_coeff	20	20	buck	66917.2800000	0.25097667600	362.390100000 #   N2  N2
+pair_coeff	20	21	buck	63620.0578100	0.25541156400	327.184408100 #   N2  O1
+pair_coeff	21	21	buck	60485.3000000	0.26000600600	295.398900000 #   O1  O1

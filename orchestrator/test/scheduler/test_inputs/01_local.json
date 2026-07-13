@@ -1,0 +1,9 @@
+{
+  "scheduler": {
+    "scheduler_type": "LOCAL",
+    "scheduler_args": {
+      "root_directory": "./orchestrator_scheduler",
+      "checkpoint_file": "./orchestrator_checkpoint.json"
+    }
+  }
+}

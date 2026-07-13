@@ -1,0 +1,42 @@
+{
+    "potential": {
+        "potential_type": "nequip_allegro",
+        "potential_args": {
+            "species": [
+                "Ta"
+            ],
+            "model_type": "nequip",
+            "device": "cpu",
+            "cutoff_radius": 5.5,
+            "num_layers": 2,
+            "l_max": 2,
+            "num_features": 32,
+            "potential_name": "test_nequip_potential"
+        }
+    },
+    "storage": {
+        "storage_type": "COLABFIT",
+        "storage_args": {
+            "credential_file": "<STORAGE_CREDENTIAL_PATH>"
+        }
+    },
+    "scheduler": {
+        "scheduler_type": "FLUX",
+        "scheduler_args": {
+            "root_directory": "./potential",
+            "queue": "<HPC_QUEUE>",
+            "account": "<HPC_ACCOUNT>",
+            "wait_freq": 20
+        }
+    },
+    "dataset_handle": "<TEST_Ta_DATASET_HANDLE>",
+    "path_type": "02_unit_test",
+    "training_args": {
+        "energy_weight": 1.0,
+        "force_weight": 1.0,
+        "stress_weight": 1.0,
+        "max_epochs": 1,
+        "batch_size": 1,
+        "log_errors": true
+    }
+}

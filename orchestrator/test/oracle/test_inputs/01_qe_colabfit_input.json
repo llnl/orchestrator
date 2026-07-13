@@ -1,34 +1,34 @@
 {
-    "oracle":{
-        "oracle_type":"QE",
-        "oracle_args":{
-            "code_path":"<QE_PATH>",
-            "input_template":"./templates/espresso.in"
+    "oracle": {
+        "oracle_type": "QE",
+        "oracle_args": {
+            "code_path": "<QE_PATH>",
+            "input_template": "./templates/espresso.in"
         },
-        "path_type":"01_unit_test",
-        "data_path":"../sample_configs/",
-        "job_details":{
-            "synchronous":false,
-            "walltime":5,
-            "extra_args":{
-                "preamble":"echo 'hello world'",
-                "after":"echo 'done'"
+        "path_type": "01_unit_test",
+        "data_path": "../sample_configs/",
+        "job_details": {
+            "synchronous": false,
+            "walltime": 5,
+            "extra_args": {
+                "preamble": "echo 'hello world'",
+                "after": "echo 'done'"
             }
         }
     },
-    "workflow":{
-        "workflow_type":"<ASYNCH_WORKFLOW>",
-        "workflow_args":{
-            "root_directory":"./oracle",
-            "queue":"<HPC_QUEUE>",
-            "account":"<HPC_ACCOUNT>",
-            "wait_freq":20
+    "scheduler": {
+        "scheduler_type": "<ASYNCH_SCHEDULER>",
+        "scheduler_args": {
+            "root_directory": "./oracle",
+            "queue": "<HPC_QUEUE>",
+            "account": "<HPC_ACCOUNT>",
+            "wait_freq": 20
         }
     },
-    "storage":{
-        "storage_type":"COLABFIT",
-        "storage_args":{
-            "credential_file":"<STORAGE_CREDENTIAL_PATH>"
+    "storage": {
+        "storage_type": "COLABFIT",
+        "storage_args": {
+            "credential_file": "<STORAGE_CREDENTIAL_PATH>"
         }
     }
 }

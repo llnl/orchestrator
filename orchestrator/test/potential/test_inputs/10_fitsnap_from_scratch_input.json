@@ -1,0 +1,14 @@
+{
+    "potential": {
+        "potential_type": "SNAP",
+        "potential_args": {
+            "species": [
+                "Si"
+            ],
+            "cutoff_radius": 3.2,
+            "two_j_max": 8,
+            "quadratic": true,
+            "use_zbl": true
+        }
+    }
+}

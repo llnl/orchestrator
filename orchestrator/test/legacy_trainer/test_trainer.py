@@ -19,13 +19,13 @@ def test_dnn_trainer_bp_potential(job_id):
     :type job_id: int
     """
     if job_id == 1:
-        workflow = 'trainer'
+        scheduler = 'trainer'
     elif job_id == 7:
-        workflow = 'submit_trainer'
+        scheduler = 'submit_trainer'
 
     ref_file = f'{ref_dir}/trainer/01_unit_test/00000/NN.params'
     glob_list = glob(
-        f'{test_dir}/trainer/{workflow}/DUNNTrainer/0{job_id}_unit_test/'
+        f'{test_dir}/trainer/{scheduler}/DUNNTrainer/0{job_id}_unit_test/'
         f'00000/*/NN.params')
     if len(glob_list) > 1:
         raise NameError('multiple NN.params files found in expected location')
@@ -60,16 +60,16 @@ def test_parametric_trainer_sw_potential(job_id):
 def test_fitsnap_trainer(job_id):
 
     if job_id == 3:
-        workflow = 'trainer'
+        scheduler = 'trainer'
     elif job_id == 8:
-        workflow = 'submit_trainer'
+        scheduler = 'submit_trainer'
 
-    test_file = (f'{test_dir}/trainer/{workflow}/FitSnapTrainer/0{job_id}'
+    test_file = (f'{test_dir}/trainer/{scheduler}/FitSnapTrainer/0{job_id}'
                  f'_unit_test/00000/fitsnap_potential.md')
     ref_file = (f'{ref_dir}/trainer/03_unit_test/00000/'
                 f'fitsnap_potential.md')
     compare_outputs(ref_file, test_file)
-    test_file = (f'{test_dir}/trainer/{workflow}/FitSnapTrainer/0{job_id}'
+    test_file = (f'{test_dir}/trainer/{scheduler}/FitSnapTrainer/0{job_id}'
                  f'_unit_test/00000/fitsnap_potential.snapcoeff')
     ref_file = (f'{ref_dir}/trainer/03_unit_test/00000/'
                 f'fitsnap_potential.snapcoeff')
@@ -80,18 +80,18 @@ def test_fitsnap_trainer(job_id):
 def test_fitsnap_weighted_trainer(job_id):
 
     if job_id == 4:
-        workflow = 'trainer'
+        scheduler = 'trainer'
     elif job_id == 9:
-        workflow = 'submit_trainer'
+        scheduler = 'submit_trainer'
 
     ref_file = (f'{ref_dir}/trainer/04_unit_test/00000/'
                 f'fitsnap_potential.md')
-    test_file = (f'{test_dir}/trainer/{workflow}/FitSnapTrainer/0{job_id}'
+    test_file = (f'{test_dir}/trainer/{scheduler}/FitSnapTrainer/0{job_id}'
                  f'_unit_test/00000/fitsnap_potential.md')
     compare_outputs(ref_file, test_file)
     ref_file = (f'{ref_dir}/trainer/04_unit_test/00000/'
                 f'fitsnap_potential.snapcoeff')
-    test_file = (f'{test_dir}/trainer/{workflow}/FitSnapTrainer/0{job_id}'
+    test_file = (f'{test_dir}/trainer/{scheduler}/FitSnapTrainer/0{job_id}'
                  f'_unit_test/00000/fitsnap_potential.snapcoeff')
     compare_outputs(ref_file, test_file, skip_lines=1)
 
@@ -100,11 +100,11 @@ def test_fitsnap_weighted_trainer(job_id):
 def test_chimes_trainer(job_id):
 
     if job_id == 5:
-        workflow = 'trainer'
+        scheduler = 'trainer'
     elif job_id == 10:
-        workflow = 'submit_trainer'
+        scheduler = 'submit_trainer'
 
-    test_file = (f'{test_dir}/trainer/{workflow}/ChIMESTrainer/{job_id:02}'
+    test_file = (f'{test_dir}/trainer/{scheduler}/ChIMESTrainer/{job_id:02}'
                  f'_unit_test/00000/chimes_potential')
     ref_file = f'{ref_dir}/trainer/05_unit_test/00000/chimes_potential'
     compare_outputs(ref_file, test_file, skip_lines=1)

@@ -10,9 +10,9 @@
         }
     },
     "calculate_property_args": {
-        "workflow": {
-            "workflow_type": "LOCAL",
-            "workflow_args": {
+        "scheduler": {
+            "scheduler_type": "LOCAL",
+            "scheduler_args": {
                 "root_directory": "fim_property_output_files"
             }
         }

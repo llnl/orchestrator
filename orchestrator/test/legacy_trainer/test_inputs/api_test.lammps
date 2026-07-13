@@ -2,7 +2,7 @@
 log lammps.log
 
 # Set the OpenKIM model and units that will be used
-kim init <MODEL_NAME> metal
+kim init {{ model_name }} metal
 
 # Periodic boundary conditions along all three dimensions
 boundary p p p
@@ -15,7 +15,7 @@ mass 1 180.948
 create_atoms 1 single 0.5 0.5 0.5
 
 # Specify the KIM interactions
-kim interactions <SPECIES>
+kim interactions {{ species }}
 
 
 run 0

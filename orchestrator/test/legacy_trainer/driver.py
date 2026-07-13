@@ -1,6 +1,6 @@
 from orchestrator.test.trainer.trainer_potential_unit_testers import (
     trainer_potential_combined_test,
-    trainer_potential_workflow_test,
+    trainer_potential_scheduler_test,
     potential_kimkit_combined_test,
     potential_kim_api_integration_test,
 )
@@ -54,13 +54,13 @@ tests_ran[4] = trainer_potential_combined_test(
 tests_ran[5] = trainer_potential_combined_test(
     'test_inputs/06_chimes_test_per_atom_weights_input.json')
 
-tests_ran[6] = trainer_potential_workflow_test(
+tests_ran[6] = trainer_potential_scheduler_test(
     'test_inputs/07_dnn_submit_test_input.json')
-tests_ran[7] = trainer_potential_workflow_test(
+tests_ran[7] = trainer_potential_scheduler_test(
     'test_inputs/08_fitsnap_submit_test_input.json')
-tests_ran[8] = trainer_potential_workflow_test(
+tests_ran[8] = trainer_potential_scheduler_test(
     'test_inputs/09_fitsnap_submit_test_per_atom_weights_input.json')
-tests_ran[9] = trainer_potential_workflow_test(
+tests_ran[9] = trainer_potential_scheduler_test(
     'test_inputs/10_chimes_submit_test_input.json')
 
 # now validate the tests:

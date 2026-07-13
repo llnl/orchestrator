@@ -24,17 +24,14 @@ def simulator_unit_test(input_file: str) -> bool:
         single_input_dict=True,
     )
 
-    init_config_args = {
-        'make_config': True,
-        'config_handle': test_inputs.get('init_conf'),
-        'storage': 'path',
-        'random_seed': test_inputs.get('random_seed', 42),
-    }
-    calc_id = built_simulator.run(test_inputs.get('path_type'),
-                                  test_inputs.get('model_path'),
-                                  test_inputs.get('input_args'),
-                                  init_config_args)
-    calc_path = built_simulator.default_wf.get_job_path(calc_id)
+    calc_id = built_simulator.run(
+        test_inputs.get('path_type'),
+        test_inputs.get('model_path'),
+        test_inputs.get('template_fill'),
+        make_config_path=test_inputs.get('init_conf'),
+        make_config_seed=test_inputs.get('random_seed', 42),
+    )
+    calc_path = built_simulator.default_scheduler.get_job_path(calc_id)
     parsed_atoms = built_simulator.parse_for_storage(calc_path)
     pos = []
     cell = []

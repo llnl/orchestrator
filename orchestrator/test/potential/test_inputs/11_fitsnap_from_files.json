@@ -1,0 +1,14 @@
+{
+    "potential": {
+        "potential_type": "SNAP",
+        "potential_args": {
+            "initialize_from": "potential_files",
+            "param_file": "test_inputs/snap_inputs/snap_potential.snapparam",
+            "coeff_file": "test_inputs/snap_inputs/snap_potential.snapcoeff",
+            "mod_file": "test_inputs/snap_inputs/snap_potential.mod",
+            "md_file": "test_inputs/snap_inputs/snap_potential.md",
+            "input_file": "test_inputs/snap_inputs/snap_potential.in",
+            "potential_name": "SNAP_tester"
+        }
+    }
+}

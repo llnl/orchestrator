@@ -1,0 +1,103 @@
+#Bonds
+bond_coeff	1	268.000	1.529	#	CT	CT
+bond_coeff	2	320.000	1.410	#	CT	OS1
+bond_coeff	3	214.000	1.327	#	C	OS1
+bond_coeff	4	570.000	1.229	#	C	O1
+bond_coeff	5	317.000	1.522	#	C	CT
+bond_coeff	6	340.000	1.090	#	CT	HC
+bond_coeff	7	340.000	1.090	#	CT	HC
+bond_coeff	8	268.000	1.529	#	CT	CT
+bond_coeff	9	320.000	1.410	#	CT	OH
+bond_coeff	10	340.000	1.090	#	CT	HC
+bond_coeff	11	553.000	0.945	#	HO	OH
+bond_coeff	12	450.000	0.957	#	HW	OW
+bond_coeff	13	400.000	1.221	#	N1	O2
+bond_coeff	14	360.000	1.373	#	C1	N3
+bond_coeff	15	360.000	1.332	#	C1	N2
+bond_coeff	16	350.000	1.435	#	C2	N1
+bond_coeff	17	360.000	1.390	#	C2	C1
+bond_coeff	18	450.000	1.019	#	H1	N2
+bond_coeff	19	350.000	1.264	#	N3	O1
+bond_coeff	20	360.000	1.307	#	C2	N4
+
+#Angles
+angle_coeff	1	37.500	110.700	#	CT	CT	HC
+angle_coeff	2	33.000	107.800	#	HC	CT	HC
+angle_coeff	3	50.000	109.500	#	CT	CT	OS
+angle_coeff	4	37.500	110.700	#	CT	CT	HC
+angle_coeff	5	35.000	109.500	#	HC	CT	OS
+angle_coeff	6	33.000	107.800	#	HC	CT	HC
+angle_coeff	7	83.000	116.900	#	C	OS	CT
+angle_coeff	8	83.000	123.400	#	O	C	OS
+angle_coeff	9	81.000	111.400	#	CT	C	OS
+angle_coeff	10	80.000	120.400	#	CT	C	O
+angle_coeff	11	35.000	109.500	#	C	CT	HC
+angle_coeff	12	37.500	110.700	#	CT	CT	HC
+angle_coeff	13	33.000	107.800	#	HC	CT	HC
+angle_coeff	14	58.350	112.700	#	CT	CT	CT
+angle_coeff	15	50.000	109.500	#	CT	CT	OH
+angle_coeff	16	35.000	109.500	#	HC	CT	OH
+angle_coeff	17	55.000	108.500	#	CT	OH	HO
+angle_coeff	18	55.000	104.520	#	HW	OW	HW
+angle_coeff	19	25.000	126.776	#	H1	N2
+angle_coeff	20	60.000	115.241	#	C2	C1
+angle_coeff	21	60.000	121.817	#	C1	N3
+angle_coeff	22	60.000	114.887	#	N4	C2
+angle_coeff	23	60.000	127.273	#	C2	C1
+angle_coeff	24	20.000	114.933	#	C1	N2
+angle_coeff	25	60.000	118.211	#	C2	N4
+angle_coeff	26	60.000	118.567	#	C1	N3
+angle_coeff	27	60.000	110.296	#	N3	C1
+angle_coeff	28	60.000	121.786	#	C1	C2
+angle_coeff	29	70.000	124.563	#	O2	N1
+angle_coeff	30	60.000	118.287	#	C2	N1
+angle_coeff	31	60.000	122.323	#	C1	C2
+
+#Dihedrals
+dihedral_coeff	1   opls	0.000	0.000	0.468	0.000	#	HC	CT	CT	OS
+dihedral_coeff	2   opls	0.000	0.000	0.300	0.000	#	HC	CT	CT	HC
+dihedral_coeff	3   opls	-1.220	-0.126	0.422	0.000	#	CT	CT	OS	C
+dihedral_coeff	4   opls	0.000	0.000	0.198	0.000	#	HC	CT	OS	C
+dihedral_coeff	5   opls	0.000	5.000	0.000	0.000	#	O	C	OS	CT
+dihedral_coeff	6   opls	4.669	5.124	0.000	0.000	#	CT	C	OS	CT
+dihedral_coeff	7   opls	0.000	0.000	0.132	0.000	#	OS	C	CT	HC
+dihedral_coeff	8   opls    0.000	0.000	0.300	0.000	#	CT	CT	CT	HC
+dihedral_coeff	9   opls    0.000	0.000	0.300	0.000	#	HC	CT	CT	HC
+dihedral_coeff	10  opls    1.300	-0.050	0.200	0.000	#	CT	CT	CT	CT
+dihedral_coeff	11  opls    -1.552	0.000	0.000	0.000	#	CT	CT	CT	OH
+dihedral_coeff	12  opls    0.000	0.000	0.468	0.000	#	HC	CT	CT	OH
+dihedral_coeff	13  opls    -0.356	-0.174	0.492	0.000	#	CT	CT	OH	HO
+dihedral_coeff	14  opls    0.000	0.000	0.352	0.000	#	HC	CT	OH	HO
+dihedral_coeff	15	harmonic 0.603	-1	2	# N2	C1	N3	C1
+dihedral_coeff	16	harmonic 6.617	-1	2	# N2	C1	C2	N4
+dihedral_coeff	17	harmonic 6.585	-1	2	# N3	C1	C2	N1
+dihedral_coeff	18	harmonic 4.174	-1	2	# N1	C2	N4	C2
+dihedral_coeff	19	harmonic 6.670	-1	2	# N3	C1	C2	N4
+dihedral_coeff	20	harmonic 3.329	-1	2	# N3	C1	N2	H1
+dihedral_coeff	21	harmonic 1.173	-1	2	# C1	C2	N1	O2
+dihedral_coeff	22	harmonic 6.592	-1	2	# N1	C2	C1	N2
+dihedral_coeff	23	harmonic 1.167	-1	2	# N4	C2	N1	O2
+dihedral_coeff	24	harmonic 0.614	-1	2	# C2	C1	N3	O1
+dihedral_coeff	25	harmonic 0.631	-1	2	# C2	C1	N3	C1
+dihedral_coeff	26	harmonic 4.177	-1	2	# C1	C2	N4	C2
+dihedral_coeff	27	harmonic 0.605	-1	2	# N2	C1	N3	O1
+dihedral_coeff	28	harmonic 3.337	-1	2	# C2	C1	N2	H1
+
+#Impropers
+improper_coeff	1	0.000	0.000	#	CT	CT	HC	HC
+improper_coeff	2	0.000	0.000	#	HC	CT	HC	HC
+improper_coeff	3	0.000	0.000	#	CT	CT	HC3	OS1
+improper_coeff	4	0.000	0.000	#	CT	CT	HC	HC
+improper_coeff	5	0.000	0.000	#	HC3	CT	HC3	OS1
+improper_coeff	6	21.000	0.000	#	CT	C	O	OS
+improper_coeff	7	0.000	0.000	#	C	CT	HC	HC
+improper_coeff	8	0.000	0.000	#	CT	CT	HC	HC
+improper_coeff	9	0.000	0.000	#	HC	CT	HC	HC
+improper_coeff	10	0.000	0.000	#	CT	CT	CT	HC
+improper_coeff	11	0.000	0.000	#	CT	CT	HC	OH
+improper_coeff	12	0.000	0.000	#	HC	CT	HC	OH
+improper_coeff	13	1.120	0.000	#	N3	C1	C1
+improper_coeff	14	1.120	0.000	#	N2	C1	H1
+improper_coeff	15	1.120	0.000	#	C2	C1	N4
+improper_coeff	16	1.120	0.000	#	C1	C2	N3
+improper_coeff	17	1.120	0.000	#	N1	O2	O2

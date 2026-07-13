@@ -1,0 +1,39 @@
+{
+    "potential": {
+        "potential_type": "SNAP",
+        "potential_args": {
+            "template": "./test_inputs/snap_inputs/Ta-example.in",
+            "species": [
+                "Ta"
+            ]
+        }
+    },
+    "storage": {
+        "storage_type": "COLABFIT",
+        "storage_args": {
+            "credential_file": "<STORAGE_CREDENTIAL_PATH>"
+        }
+    },
+    "scheduler": {
+        "scheduler_type": "<ASYNCH_SCHEDULER>",
+        "scheduler_args": {
+            "root_directory": "./potential",
+            "queue": "<HPC_QUEUE>",
+            "account": "<HPC_ACCOUNT>",
+            "wait_freq": 20
+        }
+    },
+    "dataset_handle": "<TEST_Ta_DATASET_HANDLE>",
+    "training_args": {
+        "energy_weight": 1.0,
+        "force_weight": 1.0,
+        "stress_weight": 1.0,
+        "job_details": {
+            "nodes": 1,
+            "walltime": 5,
+            "extra_args": {
+                "extra_header": "#SBATCH --exclusive"
+            }
+        }
+    }
+}

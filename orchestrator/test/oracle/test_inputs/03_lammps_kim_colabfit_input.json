@@ -1,27 +1,27 @@
 {
-    "oracle":{
-        "oracle_type":"LAMMPSKIM",
-        "oracle_args":{
-            "code_path":"<LAMMPS_PATH>",
-            "potential":"SW_StillingerWeber_1985_Si__MO_405512056662_006"
+    "oracle": {
+        "oracle_type": "LAMMPSKIM",
+        "oracle_args": {
+            "code_path": "<LAMMPS_PATH>",
+            "potential": "SW_StillingerWeber_1985_Si__MO_405512056662_006"
         },
-        "path_type":"03_unit_test",
-        "data_path":"../sample_configs/"
+        "path_type": "03_unit_test",
+        "data_path": "../sample_configs/"
     },
-    "workflow":{
-        "workflow_type":"<ASYNCH_WORKFLOW>",
-        "workflow_args":{
-            "root_directory":"./oracle",
-            "queue":"<HPC_QUEUE>",
-            "account":"<HPC_ACCOUNT>",
-            "wait_freq":20,
-            "walltime":2
+    "scheduler": {
+        "scheduler_type": "<ASYNCH_SCHEDULER>",
+        "scheduler_args": {
+            "root_directory": "./oracle",
+            "queue": "<HPC_QUEUE>",
+            "account": "<HPC_ACCOUNT>",
+            "wait_freq": 20,
+            "walltime": 2
         }
     },
-    "storage":{
-        "storage_type":"COLABFIT",
-        "storage_args":{
-            "credential_file":"<STORAGE_CREDENTIAL_PATH>"
+    "storage": {
+        "storage_type": "COLABFIT",
+        "storage_args": {
+            "credential_file": "<STORAGE_CREDENTIAL_PATH>"
         }
     }
 }

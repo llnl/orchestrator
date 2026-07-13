@@ -68,12 +68,12 @@ def trainer_potential_combined_test(input_file: str) -> bool:
     return True, potential
 
 
-def trainer_potential_workflow_test(input_file: str) -> bool:
+def trainer_potential_scheduler_test(input_file: str) -> bool:
     """
     test of the submit_train functionality of trainer
 
     :param input_file: input file path with requisite module blocks.
-        potential, trainer, storage, and workflow are required
+        potential, trainer, storage, and scheduler are required
     :type input_file: str
     :returns: boolean flag that the function completed execution. Does not
         necessarily indicate a correct output, but is used to determine if the
@@ -90,7 +90,7 @@ def trainer_potential_workflow_test(input_file: str) -> bool:
     potential = init_and_validate_module_type('potential', test_inputs)
     trainer = init_and_validate_module_type('trainer', test_inputs)
     storage = init_and_validate_module_type('storage', test_inputs)
-    workflow = init_and_validate_module_type('workflow', test_inputs)
+    scheduler = init_and_validate_module_type('scheduler', test_inputs)
 
     potential.build_potential()
 
@@ -107,7 +107,7 @@ def trainer_potential_workflow_test(input_file: str) -> bool:
         potential,
         storage,
         test_inputs['dataset_handle'],
-        workflow,
+        scheduler,
         test_inputs.get('job_details', {}),
         eweight=eweight,
         fweight=fweight,
@@ -117,7 +117,7 @@ def trainer_potential_workflow_test(input_file: str) -> bool:
     )
     print(f'Training job submitted as {calc_id}')
 
-    trainer.load_from_submitted_training(calc_id, potential, workflow)
+    trainer.load_from_submitted_training(calc_id, potential, scheduler)
     return True
 
 
@@ -344,14 +344,13 @@ def potential_kim_api_integration_test(input_file: str) -> bool:
                 "input_template": "./test_inputs/api_test.lammps"
             }
             lammps_sim = LAMMPSSimulator(sim_init)
-            sim_input_args = {
+            sim_template_fill = {
                 'model_name': potential.kim_id,
                 'species': ' '.join(potential.species),
             }
-            calc_id = lammps_sim.run('api_test', None, sim_input_args,
-                                     {'make_config': False})
+            calc_id = lammps_sim.run('api_test', None, sim_template_fill)
             print('LAMMPS simulation run in '
-                  f'{lammps_sim.default_wf.get_job_path(calc_id)}')
+                  f'{lammps_sim.default_scheduler.get_job_path(calc_id)}')
 
             # remove from KIM_API
             result = os.system(

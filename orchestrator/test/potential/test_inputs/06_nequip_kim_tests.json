@@ -1,0 +1,10 @@
+{
+    "potential": {
+        "potential_type": "nequip_allegro",
+        "potential_args": {
+            "initialize_from": "potential_files",
+            "config_file": "test_inputs/nequip_allegro_inputs/config.yaml",
+            "compiled_file": "test_inputs/nequip_allegro_inputs/compiled.nequip.pth"
+        }
+    }
+}

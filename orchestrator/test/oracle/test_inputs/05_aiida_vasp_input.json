@@ -25,9 +25,9 @@
             "database_path": "./scratch"
         }
     },
-    "workflow":{
-        "workflow_type": "AiiDA",
-        "workflow_args": {
+    "scheduler":{
+        "scheduler_type": "AiiDA",
+        "scheduler_args": {
             "root_directory": "./oracle",
             "queue": "<HPC_QUEUE>",
             "account": "<HPC_ACCOUNT>",

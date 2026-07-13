@@ -1,5 +1,5 @@
 {"example_kimcode_prefix" : "FitSNAP_Ta",
-"model_driver" : "SNAP__MD_536750310735_000",
+"model_driver" : "SNAP__MD_536750310735_001",
 "trainer_test_input_file": "test_inputs/03_fitsnap_test_input.json",
 "lammps_executable": "<LAMMPS_PATH>"
 }
