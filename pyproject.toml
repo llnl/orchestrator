@@ -37,6 +37,7 @@ dependencies = [
     "kim-edn==1.4.1",
     "kimpy==2.1.3",
     "kliff @ git+https://github.com/openkim/kliff",
+    "lammps",
     "pandas==2.2.3",
     "pre-commit",
     "pymatgen",
@@ -48,7 +49,7 @@ dependencies = [
     "sphinx-copybutton",
     "sphinx-autodoc-typehints",
     "sphinx-design",
-    "torch==2.4.0",
+    "torch",
     "kimkit==1.1.0"
 ]
 
@@ -68,6 +69,16 @@ AIIDA = [
     "aiida-vasp==4.1.0",
     "aiida-quantumespresso==4.7.0",
     "aiida-pseudo==1.6.0"
+]
+NEQUIP = [
+    "e3nn",
+    "hydra-core",
+    "lightning",
+    "matscipy",
+    "nequip>0.6.2",
+    "nequip-allegro",
+    "omegaconf",
+    "torchmetrics",
 ]
 
 [tool.setuptools.packages.find]
