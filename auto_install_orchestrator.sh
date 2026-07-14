@@ -82,8 +82,7 @@ if [[ ! -x "${MICROMAMBA_BIN}" ]]; then
       ;;
   esac
 
-  curl -Ls https://micro.mamba.pm/api/micromamba/${PLATFORM}-${ARCH}/latest \
-       | tar -C "$(dirname "${MICROMAMBA_BIN}")" -xvj --strip-components=1 bin/micromamba
+  curl -Ls https://micro.mamba.pm/api/micromamba/${PLATFORM}-${ARCH}/latest | tar -xvj bin/micromamba
 fi
 
 # shell hook (posix syntax works for bash/zsh/sh)

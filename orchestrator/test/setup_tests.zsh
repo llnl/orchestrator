@@ -22,15 +22,12 @@ HPC_ACCOUNT='ACCOUNT_STRING'
 HPC_QUEUE='QUEUE_NAME'
 KIM_API='kim-api-collections-management'
 LAMMPS_PATH='/PATH/TO/lmp'
-LAMMPS_PATH_HYBRID='/PATH/TO/ALTERNATE/lmp'
 NODES=1
 TASKS=112
 NODES_HYBRID=1
 TASKS_HYBRID=1
-PREAMBLE_HYBRID='ENVIRONMENT SETUP FOR ALTERNATE MACHINE'
 QE_PATH='/PATH/TO/pw.x'
 USE_GPU="false"
-USE_GPU_HYBRID="true"
 FLUX_MACHINE_NAME='NAME_OF_FLUX_MACHINE'
 
 # read paths
@@ -103,30 +100,25 @@ copy_dir_content() {
 }
 
 substitute_inputs() {
-    escaped_PREAMBLE_HYBRID=$(sed 's/[\\$&\/]/\\&/g; s/\n/\\n/g' <<< "$PREAMBLE_HYBRID")
     find ./ -name "*.json" | xargs sed -i.bak \
-            -e "s|<ASYNCH_SCHEDULER>|${ASYNCH_SCHEDULER}|g" \
-            -e "s|<ASYNCH_SCHEDULER_HYBRID>|${ASYNCH_SCHEDULER_HYBRID}|g" \
-            -e "s|<CHIMES_LSQ>|${CHIMES_LSQ}|g" \
-            -e "s|<CHIMES_LSQ_PY>|${CHIMES_LSQ_PY}|g" \
-            -e "s|<HPC_ACCOUNT>|${HPC_ACCOUNT}|g" \
-            -e "s|<HPC_QUEUE>|${HPC_QUEUE}|g" \
-            -e "s|<INSTALL_PATH>|${INSTALL_PATH}|g" \
-            -e "s|<KIM_API>|${KIM_API}|g" \
-            -e "s|<LAMMPS_PATH>|${LAMMPS_PATH}|g" \
-	        -e "s|<LAMMPS_PATH_HYBRID>|${LAMMPS_PATH_HYBRID}|g" \
-            -e "s|<NODES>|${NODES}|g" \
-            -e "s|<TASKS>|${TASKS}|g" \
-            -e "s|<NODES_HYBRID>|${NODES_HYBRID}|g" \
-            -e "s|<TASKS_HYBRID>|${TASKS_HYBRID}|g" \
-            -e "s|<POTENTIAL_DIR>|${TEST_PATH}/shared_inputs/potential/|g" \
-            -e "s|<PREAMBLE_HYBRID>|${escaped_PREAMBLE_HYBRID}|g" \
-            -e "s|<QE_PATH>|${QE_PATH}|g" \
-            -e "s|<STORAGE_CREDENTIAL_PATH>|${STORAGE_CREDENTIAL_PATH}|g" \
-            -e "s|<TEST_Si_DATASET_HANDLE>|${TEST_Si_DATASET_HANDLE}|g" \
-	        -e "s|<TEST_Ta_DATASET_HANDLE>|${TEST_Ta_DATASET_HANDLE}|g" \
-	        -e "s|<USE_GPU>|${USE_GPU}|g" \
-	    -e "s|<USE_GPU_HYBRID>|${USE_GPU_HYBRID}|g"
+        -e "s|<ASYNCH_SCHEDULER>|${ASYNCH_SCHEDULER}|g" \
+        -e "s|<CHIMES_LSQ>|${CHIMES_LSQ}|g" \
+        -e "s|<CHIMES_LSQ_PY>|${CHIMES_LSQ_PY}|g" \
+        -e "s|<FLUX_MACHINE_NAME>|${FLUX_MACHINE_NAME}|g" \
+        -e "s|<HPC_ACCOUNT>|${HPC_ACCOUNT}|g" \
+        -e "s|<HPC_QUEUE>|${HPC_QUEUE}|g" \
+        -e "s|<INSTALL_PATH>|${INSTALL_PATH}|g" \
+        -e "s|<KIM_API>|${KIM_API}|g" \
+        -e "s|<LAMMPS_PATH>|${LAMMPS_PATH}|g" \
+        -e "s|<NODES>|${NODES}|g" \
+        -e "s|<TASKS>|${TASKS}|g" \
+        -e "s|<NODES_HYBRID>|${NODES_HYBRID}|g" \
+        -e "s|<POTENTIAL_DIR>|${TEST_PATH}/shared_inputs/potential/|g" \
+        -e "s|<QE_PATH>|${QE_PATH}|g" \
+        -e "s|<STORAGE_CREDENTIAL_PATH>|${STORAGE_CREDENTIAL_PATH}|g" \
+        -e "s|<TEST_Si_DATASET_HANDLE>|${TEST_Si_DATASET_HANDLE}|g" \
+        -e "s|<TEST_Ta_DATASET_HANDLE>|${TEST_Ta_DATASET_HANDLE}|g" \
+        -e "s|<USE_GPU>|${USE_GPU}|g"
 	rm *.bak
 }
 
@@ -239,8 +231,8 @@ fi
 cd ${INSTALL_PATH}
 if [[ ${MODULE} != 'storage' ]]; then
     # storage doesn't have any of these files
-    find ./ -name "test_*.py" | xargs sed -i.bak "s;INSTALL_PATH;${INSTALL_PATH};"
-    find ./ -name "test_*.py" | xargs sed -i.bak "s;TEST_PATH;${TEST_PATH};"
+    find ./ -name "test_*.py" | xargs sed -i.bak "s|INSTALL_PATH|${INSTALL_PATH}|"
+    find ./ -name "test_*.py" | xargs sed -i.bak "s|TEST_PATH|${TEST_PATH}|"
     find ./ -name "*.bak" | xargs rm
 fi
 
