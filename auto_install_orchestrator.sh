@@ -165,7 +165,7 @@ fi
 
 echo "[INFO] Installing orchestrator (editable) + extras - this step may take ~10 min"
 # install all optional dependencies
-pip install --quiet --no-cache-dir -e "${REPO_DIR}[AIIDA, LTAU, FIMMATCHING]"
+pip install --quiet --no-cache-dir -e "${REPO_DIR}[AIIDA, LTAU, FIMMATCHING, NEQUIP]"
 
 echo "[INFO] Orchestrator installation completed at $(date)"
 
@@ -215,6 +215,7 @@ echo "[INFO] resetting .condarc file to original file"
 mv ~/.condarcbackup ~/.condarc
 
 # ---------- kimkit user setup ----------------------------------------------
+echo "[INFO] Attempting to initialize user in kimkit repo. If not configured, this will timeout"
 USER=`whoami`
 python - <<PY
 try:
@@ -223,7 +224,7 @@ try:
         users.add_self_as_user("${USER}")
     except RuntimeError as e:
         print(e)
-except ModuleNotFoundError as e:
+except Exception as e:
     print(e)
 PY
 

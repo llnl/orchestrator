@@ -37,7 +37,6 @@ dependencies = [
     "kim-edn==1.4.1",
     "kimpy==2.1.3",
     "kliff @ git+https://github.com/openkim/kliff",
-    "lammps",
     "pandas==2.2.3",
     "pre-commit",
     "pymatgen",
