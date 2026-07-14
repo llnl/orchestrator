@@ -39,13 +39,13 @@ TEST_PATH=$(pwd)
 if [[ ${#} -ne 2 || ${INSTALL_PATH} == "-h" ]]; then
     echo "Usage: setup_tests.zsh [path to install tests] [test type]"
     echo "    test type should be one of:"
-    echo "      all, descriptor, oracle, potential, score, simulator, storage, target_property"
+    echo "      all, descriptor, oracle, potential, scheduler, score, simulator, storage, target_property"
     exit
 fi
 
-if [[ ! "${TESTS}" =~ ^(all|descriptor|oracle|potential|score|simulator|storage|target_property)$ ]]; then
+if [[ ! "${TESTS}" =~ ^(all|descriptor|oracle|potential|scheduler|score|simulator|storage|target_property)$ ]]; then
     echo "The third argument must be one of:"
-    echo "    all, descriptor, oracle, potential, simulator, storage, target_property"
+    echo "    all, descriptor, oracle, potential, scheduler, score, simulator, storage, target_property"
     exit
 fi
 
@@ -145,6 +145,17 @@ if [[ ${TESTS} == "oracle" || ${TESTS} == "all" ]]; then
     # set pseduo path for QE setup
     sed -i.bak "s;PSEUDO_DIR;${TEST_PATH}/shared_inputs/pseudos/;" \
         ../templates/espresso.in && rm ../templates/espresso.in.bak
+    # return to starting point
+    cd ${TEST_PATH}
+fi
+
+# scheduler tests
+if [[ ${TESTS} == "scheduler" || ${TESTS} == "all" ]]; then
+    copy_dir_content scheduler
+
+    # specify machine specific params in input files
+    cd ${INSTALL_PATH}/scheduler/test_inputs
+    substitute_inputs
     # return to starting point
     cd ${TEST_PATH}
 fi
