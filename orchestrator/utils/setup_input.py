@@ -10,12 +10,11 @@ supported_modules = [
     'descriptor',
     'oracle',
     'potential',
+    'scheduler',
     'score',
     'simulator',
     'storage',
     'target_property',
-    'trainer',
-    'scheduler',
 ]
 
 # rudimentary for now, but can be expanded in the future
@@ -25,12 +24,11 @@ required_args_dict = {
     'descriptor': ['descriptor_type', 'descriptor_args'],
     'oracle': ['oracle_type', 'oracle_args'],
     'potential': ['potential_type', 'potential_args'],
+    'scheduler': ['scheduler_type', 'scheduler_args'],
     'score': ['score_type', 'score_args'],
     'simulator': ['simulator_type', 'simulator_args'],
     'storage': ['storage_type', 'storage_args'],
     'target_property': ['target_property_type'],
-    'trainer': ['trainer_type', 'trainer_args'],
-    'scheduler': ['scheduler_type', 'scheduler_args'],
 }
 
 
@@ -55,9 +53,9 @@ def setup_orch_modules(jsondict: dict) -> list:
     Given the flexibility of the orchestrator, setup only instantiate modules
     which are given in the input file. This setup currently supports the
     :class:`~.Augmentor`, :class:`~.DescriptorBase`, :class:`~.Oracle` and
-    :class:`~.AiidaOracle`, :class:`~.Potential`, :class:`~.ScoreBase`,
-    :class:`~.Simulator`, :class:`~.Storage`, :class:`~.TargetProperty`,
-    :class:`~.Trainer`, and :class:`~.Scheduler` modules.
+    :class:`~.AiidaOracle`, :class:`~.Potential`, :class:`~.Scheduler`
+    :class:`~.ScoreBase`, :class:`~.Simulator`, :class:`~.Storage`, and
+    :class:`~.TargetProperty` modules.
 
     :param jsonfile: Input arguments parsed by :meth:`read_input` from the
         JSON file.
